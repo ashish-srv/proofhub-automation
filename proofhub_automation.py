@@ -5,6 +5,11 @@ import time
 from datetime import datetime
 import ast
 import os
+import json
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.errors import HttpError
 
 # ================= CONFIGURATION =================
 COMPANY_NAME = "srvmedia"
@@ -95,6 +100,68 @@ def get_client_name(project_name):
         if key in project_name_str:
             return value
     return ''
+
+# ================= GOOGLE DRIVE UPLOAD =================
+def upload_to_google_drive(file_path, folder_id):
+    """Upload file to Google Drive at specific folder"""
+    try:
+        # Get service account key from environment variable
+        service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY'])
+        
+        # Create credentials
+        credentials = service_account.Credentials.from_service_account_info(
+            service_account_info,
+            scopes=['https://www.googleapis.com/auth/drive.file']
+        )
+        
+        # Build Drive service
+        service = build('drive', 'v3', credentials=credentials)
+        
+        # File metadata
+        file_metadata = {
+            'name': 'All Projects Timesheet.csv',
+            'parents': [folder_id]
+        }
+        
+        # Create media
+        media = MediaFileUpload(
+            file_path,
+            mimetype='text/csv',
+            resumable=True
+        )
+        
+        # Search for existing file
+        response = service.files().list(
+            q=f"name='All Projects Timesheet.csv' and '{folder_id}' in parents and trashed=false",
+            spaces='drive',
+            fields='files(id, name)'
+        ).execute()
+        
+        if response.get('files'):
+            # Update existing file
+            file_id = response['files'][0]['id']
+            file = service.files().update(
+                fileId=file_id,
+                media_body=media
+            ).execute()
+            print(f"✅ Updated existing file in Google Drive: {file.get('id')}")
+        else:
+            # Create new file
+            file = service.files().create(
+                body=file_metadata,
+                media_body=media,
+                fields='id'
+            ).execute()
+            print(f"✅ Created new file in Google Drive: {file.get('id')}")
+        
+        return True
+        
+    except HttpError as error:
+        print(f'❌ Google Drive upload failed: {error}')
+        return False
+    except Exception as e:
+        print(f'❌ Error: {e}')
+        return False
 
 # ================= DOWNLOAD FUNCTION =================
 def download_all_data(endpoint, data_key=None, max_pages=3):
@@ -411,14 +478,13 @@ def main():
         existing_columns = [col for col in final_columns if col in df.columns]
         final_df = df[existing_columns].copy()
         
-        # Save CSV
+        # Save CSV locally
         output_filename = "All Projects Timesheet.csv"
         final_df.to_csv(output_filename, index=False, encoding='utf-8')
         
-        print(f"\n✅ AUTOMATION COMPLETE!")
+        print(f"\n✅ DATA PROCESSING COMPLETE!")
         print(f"📊 Time entries: {len(final_df)}")
-        print(f"📁 File saved: {output_filename}")
-        print(f"⏰ Completed at: {datetime.now()}")
+        print(f"📁 Local file saved: {output_filename}")
         
         return output_filename
     
@@ -427,4 +493,24 @@ def main():
         return None
 
 if __name__ == "__main__":
-    main()
+    # Run the main function
+    csv_file = main()
+    
+    # Upload to Google Drive if file was created
+    if csv_file:
+        print("\n📤 UPLOADING TO GOOGLE DRIVE...")
+        
+        # Get folder ID from environment variable
+        drive_folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
+        
+        if drive_folder_id:
+            success = upload_to_google_drive(csv_file, drive_folder_id)
+            if success:
+                print("✅ File successfully uploaded to Google Drive!")
+                print(f"📁 Path: My Drive/Zoho Analytics/ProofHub/All Projects Timesheet.csv")
+            else:
+                print("❌ Failed to upload to Google Drive")
+        else:
+            print("⚠️  No Google Drive folder ID provided. File saved locally only.")
+    else:
+        print("❌ No CSV file to upload")
