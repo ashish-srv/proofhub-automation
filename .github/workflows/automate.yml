@@ -4,33 +4,37 @@ on:
   schedule:
     # Daily at 9:30 AM IST (4:00 AM UTC)
     - cron: '0 4 * * *'
-  
-  # Allow manual runs
   workflow_dispatch:
-    inputs:
-      notes:
-        description: 'Notes for manual run'
-        required: false
 
 jobs:
   run-and-upload:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Get code
+    # 1. Checkout code
     - name: Checkout repository
       uses: actions/checkout@v4
     
     # 2. Setup Python
     - name: Setup Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.10'  # Using 3.10 for better compatibility
     
-    # 3. Install packages
+    # 3. Install dependencies - FIXED VERSION
     - name: Install dependencies
       run: |
-        pip install --upgrade pip
+        # Clear pip cache to avoid corrupted packages
+        pip cache purge
+        
+        # Upgrade pip first
+        python -m pip install --upgrade pip
+        
+        # Force clean install of numpy and pandas with compatible versions
+        pip uninstall -y numpy pandas
+        pip install numpy==1.24.3 pandas==1.5.3
+        
+        # Install the rest from requirements
         pip install -r requirements.txt
     
     # 4. Run ProofHub Automation
@@ -40,32 +44,26 @@ jobs:
         GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
         GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       run: |
-        echo "Starting ProofHub automation..."
+        echo "🚀 Starting ProofHub automation at $(date)"
         python proofhub_automation.py
-        echo "Script execution completed."
+        echo "✅ Script execution completed at $(date)"
     
-    # 5. Upload CSV as backup (using v4)
-    - name: Upload CSV backup
+    # 5. Upload CSV as backup (optional)
+    - name: Upload CSV as backup artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: timesheet-data
+        name: timesheet-backup-$(date +%Y%m%d)
         path: All Projects Timesheet.csv
         retention-days: 7
         if-no-files-found: warn
     
-    # 6. Success notification
-    - name: Print success message
-      if: success()
+    # 6. Final status message
+    - name: Workflow status
+      if: always()
       run: |
-        echo "✅ ProofHub automation completed successfully!"
-        echo "📅 Date: $(date)"
-        echo "⏰ Time: $(date +%T)"
-    
-    # 7. Failure notification
-    - name: Print failure message
-      if: failure()
-      run: |
-        echo "❌ ProofHub automation failed!"
-        echo "📅 Date: $(date)"
-        echo "⏰ Time: $(date +%T)"
+        if [ "${{ job.status }}" == "success" ]; then
+          echo "🎉 Workflow completed successfully!"
+        else
+          echo "⚠️  Workflow completed with status: ${{ job.status }}"
+        fi
