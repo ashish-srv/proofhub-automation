@@ -1,0 +1,41 @@
+name: ProofHub Daily Automation
+
+on:
+  schedule:
+    # Runs daily at 9:30 AM IST (4:00 AM UTC)
+    - cron: '0 4 * * *'
+
+  # Allow manual runs
+  workflow_dispatch:
+
+jobs:
+  run-automation:
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Get code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # 2. Setup Python
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      # 3. Install packages
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # 4. Run script
+      - name: Run ProofHub Automation
+        env:
+          PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
+        run: python proofhub_automation.py
+
+      # 5. Upload CSV as artifact
+      - name: Upload CSV file
+        uses: actions/upload-artifact@v3
+        with:
+          name: timesheet-data
+          path: All Projects Timesheet.csv
