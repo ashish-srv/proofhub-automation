@@ -2,10 +2,8 @@ name: ProofHub Daily Automation
 
 on:
   schedule:
-    # Runs daily at 9:30 AM IST (4:00 AM UTC)
+    # Daily at 9:30 AM IST (4:00 AM UTC)
     - cron: '0 4 * * *'
-  
-  # Allow manual runs
   workflow_dispatch:
 
 jobs:
@@ -13,20 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Get code
     - uses: actions/checkout@v3
     
-    # 2. Setup Python
     - uses: actions/setup-python@v4
       with:
         python-version: '3.9'
     
-    # 3. Install packages
     - name: Install dependencies
-      run: |
-        pip install -r requirements.txt
+      run: pip install -r requirements.txt
     
-    # 4. Run ProofHub Automation
     - name: Run ProofHub Automation
       env:
         PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
@@ -34,15 +27,8 @@ jobs:
         GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       run: python proofhub_automation.py
     
-    # 5. Upload CSV as artifact (backup)
-    - name: Upload CSV as backup
+    - name: Upload backup
       uses: actions/upload-artifact@v3
       with:
         name: timesheet-backup
         path: All Projects Timesheet.csv
-        retention-days: 7
-    
-    # 6. Send success notification (optional)
-    - name: Send success notification
-      if: success()
-      run: echo "✅ ProofHub automation completed successfully at $(date)"
