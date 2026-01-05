@@ -4,31 +4,68 @@ on:
   schedule:
     # Daily at 9:30 AM IST (4:00 AM UTC)
     - cron: '0 4 * * *'
+  
+  # Allow manual runs
   workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Notes for manual run'
+        required: false
 
 jobs:
   run-and-upload:
     runs-on: ubuntu-latest
     
     steps:
-    - uses: actions/checkout@v3
+    # 1. Get code
+    - name: Checkout repository
+      uses: actions/checkout@v4
     
-    - uses: actions/setup-python@v4
+    # 2. Setup Python
+    - name: Setup Python
+      uses: actions/setup-python@v5
       with:
         python-version: '3.9'
     
+    # 3. Install packages
     - name: Install dependencies
-      run: pip install -r requirements.txt
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
     
+    # 4. Run ProofHub Automation
     - name: Run ProofHub Automation
       env:
         PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
         GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
         GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-      run: python proofhub_automation.py
+      run: |
+        echo "Starting ProofHub automation..."
+        python proofhub_automation.py
+        echo "Script execution completed."
     
-    - name: Upload backup
-      uses: actions/upload-artifact@v3
+    # 5. Upload CSV as backup (using v4)
+    - name: Upload CSV backup
+      if: always()
+      uses: actions/upload-artifact@v4
       with:
-        name: timesheet-backup
+        name: timesheet-data
         path: All Projects Timesheet.csv
+        retention-days: 7
+        if-no-files-found: warn
+    
+    # 6. Success notification
+    - name: Print success message
+      if: success()
+      run: |
+        echo "✅ ProofHub automation completed successfully!"
+        echo "📅 Date: $(date)"
+        echo "⏰ Time: $(date +%T)"
+    
+    # 7. Failure notification
+    - name: Print failure message
+      if: failure()
+      run: |
+        echo "❌ ProofHub automation failed!"
+        echo "📅 Date: $(date)"
+        echo "⏰ Time: $(date +%T)"
