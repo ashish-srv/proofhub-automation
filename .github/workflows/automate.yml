@@ -37,7 +37,31 @@ jobs:
         # Install the rest from requirements
         pip install -r requirements.txt
     
-    # 4. Run ProofHub Automation
+    # 4. Test Google Drive Configuration
+    - name: Test Google Drive Configuration
+      env:
+        GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+      run: |
+        echo "🧪 Testing Google Drive Configuration..."
+        echo "Folder ID: $GOOGLE_DRIVE_FOLDER_ID"
+        echo "Folder ID length: ${#GOOGLE_DRIVE_FOLDER_ID}"
+        
+        # Check JSON is valid
+        python3 -c "
+        import json, os
+        try:
+            key = os.environ.get('GOOGLE_SERVICE_ACCOUNT_KEY', '')
+            data = json.loads(key)
+            print('✅ JSON is valid')
+            print(f'   Client email: {data[\"client_email\"]}')
+            print(f'   Project ID: {data[\"project_id\"]}')
+        except Exception as e:
+            print(f'❌ JSON error: {e}')
+            print('First 100 chars:', key[:100] if key else 'EMPTY')
+        "
+    
+    # 5. Run ProofHub Automation
     - name: Run ProofHub Automation
       env:
         PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
@@ -48,7 +72,7 @@ jobs:
         python proofhub_automation.py
         echo "✅ Script execution completed at $(date)"
     
-    # 5. Upload CSV as backup (optional)
+    # 6. Upload CSV as backup (optional)
     - name: Upload CSV as backup artifact
       if: always()
       uses: actions/upload-artifact@v4
@@ -58,12 +82,17 @@ jobs:
         retention-days: 7
         if-no-files-found: warn
     
-    # 6. Final status message
+    # 7. Final status message
     - name: Workflow status
       if: always()
       run: |
         if [ "${{ job.status }}" == "success" ]; then
           echo "🎉 Workflow completed successfully!"
+          echo "📊 Next run: Daily at 9:30 AM IST"
+        elif [ "${{ job.status }}" == "failure" ]; then
+          echo "❌ Workflow failed!"
+          echo "🔍 Check logs above for details"
         else
-          echo "⚠️  Workflow completed with status: ${{ job.status }}"
+          echo "⚠️  Workflow status: ${{ job.status }}"
         fi
+        echo "⏰ Completed at: $(date)"
