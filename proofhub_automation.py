@@ -103,19 +103,56 @@ def get_client_name(project_name):
 
 # ================= GOOGLE DRIVE UPLOAD =================
 def upload_to_google_drive(file_path, folder_id):
-    """Upload file to Google Drive at specific folder"""
+    """Upload file to Google Drive Shared Drive"""
     try:
-        # Get service account key from environment variable
-        service_account_info = json.loads(os.environ['GOOGLE_SERVICE_ACCOUNT_KEY'])
+        print(f"📤 Starting Google Drive upload to Shared Drive...")
+        print(f"   File: {file_path} ({os.path.getsize(file_path) / 1024:.1f} KB)")
+        print(f"   Target Shared Drive Folder ID: {folder_id}")
         
-        # Create credentials
+        if not os.path.exists(file_path):
+            print("❌ CSV file not found!")
+            return False
+        
+        # Get service account key
+        service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_KEY')
+        if not service_account_json:
+            print("❌ GOOGLE_SERVICE_ACCOUNT_KEY is missing!")
+            return False
+        
+        # Parse JSON
+        try:
+            service_account_info = json.loads(service_account_json)
+            print(f"✅ Service Account: {service_account_info.get('client_email')}")
+        except json.JSONDecodeError as e:
+            print(f"❌ JSON error: {e}")
+            return False
+        
+        # Create credentials with drive scope
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info,
-            scopes=['https://www.googleapis.com/auth/drive.file']
+            scopes=['https://www.googleapis.com/auth/drive']
         )
         
         # Build Drive service
-        service = build('drive', 'v3', credentials=credentials)
+        service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
+        
+        # Test access to Shared Drive
+        print(f"🔍 Testing access to Shared Drive folder...")
+        try:
+            folder_info = service.files().get(
+                fileId=folder_id,
+                fields='id, name, driveId, capabilities',
+                supportsAllDrives=True
+            ).execute()
+            print(f"✅ Can access folder: {folder_info.get('name')}")
+            print(f"   Drive ID: {folder_info.get('driveId')}")
+        except Exception as e:
+            print(f"❌ Cannot access folder: {e}")
+            print("   Make sure:")
+            print("   1. Service account has access to Shared Drive")
+            print("   2. Service account has 'Content manager' or 'Editor' role")
+            print("   3. Folder ID is correct")
+            return False
         
         # File metadata
         file_metadata = {
@@ -130,38 +167,61 @@ def upload_to_google_drive(file_path, folder_id):
             resumable=True
         )
         
-        # Search for existing file
+        # Search for existing file in Shared Drive
+        print(f"🔍 Searching for existing file...")
         response = service.files().list(
             q=f"name='All Projects Timesheet.csv' and '{folder_id}' in parents and trashed=false",
             spaces='drive',
-            fields='files(id, name)'
+            fields='files(id, name)',
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
         ).execute()
         
         if response.get('files'):
             # Update existing file
             file_id = response['files'][0]['id']
+            print(f"🔄 Updating existing file (ID: {file_id})")
             file = service.files().update(
                 fileId=file_id,
-                media_body=media
+                media_body=media,
+                supportsAllDrives=True
             ).execute()
-            print(f"✅ Updated existing file in Google Drive: {file.get('id')}")
+            print(f"✅ Updated file in Shared Drive: {file.get('id')}")
         else:
             # Create new file
+            print(f"📄 Creating new file in Shared Drive...")
             file = service.files().create(
                 body=file_metadata,
                 media_body=media,
-                fields='id'
+                fields='id',
+                supportsAllDrives=True
             ).execute()
-            print(f"✅ Created new file in Google Drive: {file.get('id')}")
+            print(f"✅ Created new file in Shared Drive: {file.get('id')}")
+        
+        # Get file link
+        file_link = f"https://drive.google.com/drive/folders/{folder_id}"
+        print(f"📎 File accessible at: {file_link}")
         
         return True
         
     except HttpError as error:
-        print(f'❌ Google Drive upload failed: {error}')
+        error_details = json.loads(error.content.decode('utf-8'))
+        error_msg = error_details.get('error', {}).get('message', str(error))
+        print(f'❌ Google Drive API error: {error_msg}')
+        
+        if 'storageQuotaExceeded' in str(error):
+            print("💡 Still getting quota error? Try:")
+            print("   1. Double-check folder is in SHARED DRIVE (not My Drive)")
+            print("   2. Service account email added to Shared Drive members")
+            print("   3. Service account has 'Content manager' permission")
+        
         return False
     except Exception as e:
-        print(f'❌ Error: {e}')
+        print(f'❌ Unexpected error: {type(e).__name__}: {e}')
+        import traceback
+        traceback.print_exc()
         return False
+
 
 # ================= DOWNLOAD FUNCTION =================
 def download_all_data(endpoint, data_key=None, max_pages=3):
