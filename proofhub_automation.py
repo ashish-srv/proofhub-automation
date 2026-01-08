@@ -87,6 +87,24 @@ CLIENT_NAME_MAPPING = {
     'XIM University': 'XIM University',
     'XLRI Jamshedpur': 'XLRI Jamshedpur',
     'XLRI Jamshedpur SM': 'XLRI Jamshedpur',
+    'PaySquare' : 'PaySquare',
+    'NL Dalmia University' : 'N L Dalmia',
+    'ISKCON' : 'ISKCON',
+    'Sai Sudha_Lawn' : 'Parul',
+    'Wabo.ai' : 'Wabo',
+    'RV University' : 'RV University',
+    'IEM' : 'IEM Kolkata',
+    'IEM Kolkata' : 'IEM Kolkata',
+    'IEM MBA 25-26' : 'IEM Kolkata',
+    'NIF Kothrud' : 'NIF',
+    'NIF Mumbai' : 'NIF',
+    'ASBM - Mumbai' : 'ASBM',
+    'INIFD Kothrud SM' : 'NIF',
+    'NIFD Kothrud' : 'NIF',
+    'NIFD Mumbai' : 'NIF',
+    'QMUL Academics Promotions' : 'QMUL',
+    'Queen Mary University - London' : 'QMUL',
+    'DY Patil - Navi Mumbai' : 'D Y Patil'
 }
 
 def get_client_name(project_name):
