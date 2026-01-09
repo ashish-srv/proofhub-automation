@@ -104,7 +104,10 @@ CLIENT_NAME_MAPPING = {
     'NIFD Mumbai' : 'NIF',
     'QMUL Academics Promotions' : 'QMUL',
     'Queen Mary University - London' : 'QMUL',
-    'DY Patil - Navi Mumbai' : 'D Y Patil'
+    'DY Patil - Navi Mumbai' : 'D Y Patil',
+    'IMS Unison University' : 'IMS Unison University',
+    'IMS Social Media' : 'IMS Unison University',
+    'IMS Unison 2026-2027': 'IMS Unison University'
 }
 
 def get_client_name(project_name):
