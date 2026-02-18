@@ -64,7 +64,7 @@ CLIENT_NAME_MAPPING = {
     'SIBM Hyd AY 2025': 'SIBM Hyderabad', 'SIBM Nagpur AY 2025': 'SIBM Nagpur',
     'SIBM Nagpur-Mobile': 'SIBM Nagpur', 'SIBM NOIDA 2025': 'SIBM Noida',
     'SIBM PUNE 2025': 'SIBM Pune', 'SICSR 2024': 'SICSR', 'SICSR 2025': 'SICSR',
-    'SID 2025': 'SID', 'SIDTM AY 2025': 'SITM', 'SIG': 'SIG',
+    'SID 2025': 'SID', 'SIDTM AY 2025': 'SIDTM', 'SIG': 'SIG',
     'SIIB 2024': 'SIIB', 'SIIB 2025': 'SIIB', 'SIMC AY 2025': 'SIMC',
     'SIOM': 'SIOM Nashik', 'SIT Hyd 2025': 'SIT Hyderabad',
     'SIT Hyderabad': 'SIT Hyderabad', 'SIT Nagpur 2025': 'SIT Nagpur',
@@ -77,10 +77,10 @@ CLIENT_NAME_MAPPING = {
     'Somaiya Vidyavihar University (SVU)': 'SVU', 'SPJIMR': 'SPJIMR',
     'SRV Edge': 'SRV', 'SRV Media': 'SRV',
     'SRV MEDIA &amp; EDGE social media': 'SRV', 'SRV PR': 'SRV',
-    'SRV Web Masters': 'SRV', 'SSE- 2024': 'SSE Pune', 'SSI 2025': 'SSI',
+    'SRV Web Masters': 'SRV', 'SSE- 2024': 'SSE', 'SSI 2025': 'SSI',
     'SSSS': 'SSSS', 'SSVAP 2025': 'SSVAP', 'MCX': 'MCX',
-    'Uniaptic': 'Uniaptix India', 'Welingkar PGDM 26-27': 'WeSchool',
-    'WeSchool 2025': 'WeSchool', 'WPU Goa': 'MIT-WPU Goa',
+    'Uniaptic': 'Uniaptix India', 'Welingkar PGDM 26-27': 'Welingkar',
+    'WeSchool 2025': 'Welingkar', 'WPU Goa': 'MIT-WPU Goa',
     'XAT': 'XAT', 'XAT 2026 - PR Outreach': 'XAT',
     'XAT 2026 Social Media': 'XAT', 'XLRI PGDM GM': 'XAT',
     'XLRI VIL': 'XAT', 'XLRI XOL': 'XAT',
@@ -161,7 +161,15 @@ CLIENT_NAME_MAPPING = {
     'Study from UAE': 'Study From UAE',
     'The Shri Ram Universal School': 'The Shri Ram Universal School',
     'Ward Wizzard': 'Ward Wizzard',
-    'Winsoft Technologies': 'Winsoft Technologies'
+    'Winsoft Technologies': 'Winsoft Technologies',
+    'Finnacle Shah': 'Finnacle Shah',
+'Manav Rachna Online': 'Manav Rachna Online',
+'MRIS': 'MRIS',
+'PCU - 2026': 'Pimpri Chinchwad University',
+'Prescient Technologies': 'Prescient Technologies',
+'SAII': 'SAII',
+'SIESSBS': 'SIESSBS',
+'SSODL': 'SSODL'
 }
 
 def get_client_name(project_name):
