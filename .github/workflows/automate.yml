@@ -1,5 +1,4 @@
 name: ProofHub Daily Automation
-
 on:
   schedule:
     # Daily at 9:30 AM IST (4:00 AM UTC)
@@ -9,34 +8,36 @@ on:
 jobs:
   run-and-upload:
     runs-on: ubuntu-latest
-    
+    # Set GITHUB_WORKSPACE explicitly so Python can find it
+    env:
+      GITHUB_WORKSPACE: ${{ github.workspace }}
+
     steps:
     # 1. Checkout code
     - name: Checkout repository
       uses: actions/checkout@v4
-    
-    # 2. Setup Python
+
+    # 2. Setup Python — upgraded to v5 to fix Node.js 20 deprecation warning
     - name: Setup Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10'  # Using 3.10 for better compatibility
-    
-    # 3. Install dependencies - FIXED VERSION
+        python-version: '3.10'
+
+    # 3. Install dependencies
     - name: Install dependencies
       run: |
-        # Clear pip cache to avoid corrupted packages
         pip cache purge
-        
-        # Upgrade pip first
         python -m pip install --upgrade pip
-        
-        # Force clean install of numpy and pandas with compatible versions
-        pip uninstall -y numpy pandas
+
+        # Uninstall first to avoid version conflicts
+        pip uninstall -y numpy pandas || true
+
+        # Install compatible versions
         pip install numpy==1.24.3 pandas==1.5.3
-        
-        # Install the rest from requirements
+
+        # Install remaining dependencies
         pip install -r requirements.txt
-    
+
     # 4. Test Google Drive Configuration
     - name: Test Google Drive Configuration
       env:
@@ -44,10 +45,8 @@ jobs:
         GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
       run: |
         echo "🧪 Testing Google Drive Configuration..."
-        echo "Folder ID: $GOOGLE_DRIVE_FOLDER_ID"
         echo "Folder ID length: ${#GOOGLE_DRIVE_FOLDER_ID}"
-        
-        # Check JSON is valid
+
         python3 -c "
         import json, os
         try:
@@ -60,28 +59,46 @@ jobs:
             print(f'❌ JSON error: {e}')
             print('First 100 chars:', key[:100] if key else 'EMPTY')
         "
-    
+
     # 5. Run ProofHub Automation
     - name: Run ProofHub Automation
       env:
         PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
         GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
         GOOGLE_DRIVE_FOLDER_ID: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
       run: |
         echo "🚀 Starting ProofHub automation at $(date)"
+        echo "📁 Working directory: $GITHUB_WORKSPACE"
         python proofhub_automation.py
         echo "✅ Script execution completed at $(date)"
-    
-    # 6. Upload CSV as backup (optional)
+
+        # Confirm the CSV was actually created
+        if [ -f "$GITHUB_WORKSPACE/All Projects Timesheet.csv" ]; then
+          echo "✅ CSV file created successfully"
+          echo "📦 File size: $(du -h "$GITHUB_WORKSPACE/All Projects Timesheet.csv" | cut -f1)"
+          echo "📝 Row count: $(wc -l < "$GITHUB_WORKSPACE/All Projects Timesheet.csv") rows (including header)"
+        else
+          echo "❌ CSV file was NOT created — check script logs above"
+          exit 1
+        fi
+
+    # 6. Upload CSV as backup artifact
+    # FIX: artifact name cannot use shell commands like $(date) — use env var instead
+    - name: Set artifact date
+      id: date
+      run: echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+
     - name: Upload CSV as backup artifact
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: timesheet-backup-$(date +%Y%m%d)
-        path: All Projects Timesheet.csv
+        name: timesheet-backup-${{ steps.date.outputs.date }}
+        # FIX: path must be absolute using github.workspace, not a bare filename
+        path: ${{ github.workspace }}/All Projects Timesheet.csv
         retention-days: 7
         if-no-files-found: warn
-    
+
     # 7. Final status message
     - name: Workflow status
       if: always()
@@ -90,8 +107,7 @@ jobs:
           echo "🎉 Workflow completed successfully!"
           echo "📊 Next run: Daily at 9:30 AM IST"
         elif [ "${{ job.status }}" == "failure" ]; then
-          echo "❌ Workflow failed!"
-          echo "🔍 Check logs above for details"
+          echo "❌ Workflow failed — check logs above"
         else
           echo "⚠️  Workflow status: ${{ job.status }}"
         fi
