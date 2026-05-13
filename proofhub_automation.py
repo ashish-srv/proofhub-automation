@@ -87,26 +87,26 @@ CLIENT_NAME_MAPPING = {
     'XIM University': 'XIM University',
     'XLRI Jamshedpur': 'XLRI Jamshedpur',
     'XLRI Jamshedpur SM': 'XLRI Jamshedpur',
-    'PaySquare' : 'PaySquare',
-    'NL Dalmia University' : 'N L Dalmia',
-    'ISKCON' : 'ISKCON',
-    'Sai Sudha_Lawn' : 'Parul',
-    'Wabo.ai' : 'Wabo',
-    'RV University' : 'RV University',
-    'IEM' : 'IEM Kolkata',
-    'IEM Kolkata' : 'IEM Kolkata',
-    'IEM MBA 25-26' : 'IEM Kolkata',
-    'NIF Kothrud' : 'NIF',
-    'NIF Mumbai' : 'NIF',
-    'ASBM - Mumbai' : 'ASBM',
-    'INIFD Kothrud SM' : 'NIF',
-    'NIFD Kothrud' : 'NIF',
-    'NIFD Mumbai' : 'NIF',
-    'QMUL Academics Promotions' : 'QMUL',
-    'Queen Mary University - London' : 'QMUL',
-    'DY Patil - Navi Mumbai' : 'D Y Patil',
-    'IMS Unison University' : 'IMS Unison University',
-    'IMS Social Media' : 'IMS Unison University',
+    'PaySquare': 'PaySquare',
+    'NL Dalmia University': 'N L Dalmia',
+    'ISKCON': 'ISKCON',
+    'Sai Sudha_Lawn': 'Parul',
+    'Wabo.ai': 'Wabo',
+    'RV University': 'RV University',
+    'IEM': 'IEM Kolkata',
+    'IEM Kolkata': 'IEM Kolkata',
+    'IEM MBA 25-26': 'IEM Kolkata',
+    'NIF Kothrud': 'NIF',
+    'NIF Mumbai': 'NIF',
+    'ASBM - Mumbai': 'ASBM',
+    'INIFD Kothrud SM': 'NIF',
+    'NIFD Kothrud': 'NIF',
+    'NIFD Mumbai': 'NIF',
+    'QMUL Academics Promotions': 'QMUL',
+    'Queen Mary University - London': 'QMUL',
+    'DY Patil - Navi Mumbai': 'D Y Patil',
+    'IMS Unison University': 'IMS Unison University',
+    'IMS Social Media': 'IMS Unison University',
     'IMS Unison 2026-2027': 'IMS Unison University',
     'AMC _SRV_EDGE': 'SRV',
     'AMC_Actylis Lab': 'Actylis Lab',
@@ -163,13 +163,13 @@ CLIENT_NAME_MAPPING = {
     'Ward Wizzard': 'Ward Wizzard',
     'Winsoft Technologies': 'Winsoft Technologies',
     'Finnacle Shah': 'Finnacle Shah',
-'Manav Rachna Online': 'Manav Rachna Online',
-'MRIS': 'MRIS',
-'PCU - 2026': 'Pimpri Chinchwad University',
-'Prescient Technologies': 'Prescient Technologies',
-'SAII': 'SAII',
-'SIESSBS': 'SIESSBS',
-'SSODL': 'SSODL'
+    'Manav Rachna Online': 'Manav Rachna Online',
+    'MRIS': 'MRIS',
+    'PCU - 2026': 'Pimpri Chinchwad University',
+    'Prescient Technologies': 'Prescient Technologies',
+    'SAII': 'SAII',
+    'SIESSBS': 'SIESSBS',
+    'SSODL': 'SSODL'
 }
 
 def get_client_name(project_name):
@@ -196,13 +196,11 @@ def upload_to_google_drive(file_path, folder_id):
             print("❌ CSV file not found!")
             return False
         
-        # Get service account key
         service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_KEY')
         if not service_account_json:
             print("❌ GOOGLE_SERVICE_ACCOUNT_KEY is missing!")
             return False
         
-        # Parse JSON
         try:
             service_account_info = json.loads(service_account_json)
             print(f"✅ Service Account: {service_account_info.get('client_email')}")
@@ -210,16 +208,13 @@ def upload_to_google_drive(file_path, folder_id):
             print(f"❌ JSON error: {e}")
             return False
         
-        # Create credentials with drive scope
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info,
             scopes=['https://www.googleapis.com/auth/drive']
         )
         
-        # Build Drive service
         service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
         
-        # Test access to Shared Drive
         print(f"🔍 Testing access to Shared Drive folder...")
         try:
             folder_info = service.files().get(
@@ -237,20 +232,17 @@ def upload_to_google_drive(file_path, folder_id):
             print("   3. Folder ID is correct")
             return False
         
-        # File metadata
         file_metadata = {
             'name': 'All Projects Timesheet.csv',
             'parents': [folder_id]
         }
         
-        # Create media
         media = MediaFileUpload(
             file_path,
             mimetype='text/csv',
             resumable=True
         )
         
-        # Search for existing file in Shared Drive
         print(f"🔍 Searching for existing file...")
         response = service.files().list(
             q=f"name='All Projects Timesheet.csv' and '{folder_id}' in parents and trashed=false",
@@ -261,7 +253,6 @@ def upload_to_google_drive(file_path, folder_id):
         ).execute()
         
         if response.get('files'):
-            # Update existing file
             file_id = response['files'][0]['id']
             print(f"🔄 Updating existing file (ID: {file_id})")
             file = service.files().update(
@@ -271,7 +262,6 @@ def upload_to_google_drive(file_path, folder_id):
             ).execute()
             print(f"✅ Updated file in Shared Drive: {file.get('id')}")
         else:
-            # Create new file
             print(f"📄 Creating new file in Shared Drive...")
             file = service.files().create(
                 body=file_metadata,
@@ -281,7 +271,6 @@ def upload_to_google_drive(file_path, folder_id):
             ).execute()
             print(f"✅ Created new file in Shared Drive: {file.get('id')}")
         
-        # Get file link
         file_link = f"https://drive.google.com/drive/folders/{folder_id}"
         print(f"📎 File accessible at: {file_link}")
         
@@ -390,6 +379,8 @@ def main():
     # Download reference data
     print("📥 Downloading people data...")
     people_df = download_all_data("people", "people", max_pages=1)
+
+    # --- CHANGE 1: also capture email alongside Full_Name ---
     if 'first_name' in people_df.columns and 'last_name' in people_df.columns:
         people_df['Full_Name'] = people_df.apply(
             lambda row: f"{str(row.get('first_name', '')).strip()} {str(row.get('last_name', '')).strip()}".strip(),
@@ -397,6 +388,9 @@ def main():
         )
         people_df['Full_Name'] = people_df['Full_Name'].replace('', pd.NA)
         people_df['Full_Name'] = people_df['Full_Name'].fillna(people_df.get('name', ''))
+
+    if 'email' not in people_df.columns:
+        people_df['email'] = ''
     
     print("📥 Downloading roles data...")
     roles_df = download_all_data("roles", "roles", max_pages=1)
@@ -454,16 +448,18 @@ def main():
             role_id = extract_id_from_field(role_field)
             if role_id:
                 people_role_mapping[person_id] = role_mapping.get(role_id, '')
-    
+
+    # --- CHANGE 2: return email from get_employee_info ---
     def get_employee_info(creator_id):
         if pd.isna(creator_id):
-            return '', ''
+            return '', '', ''
         person = people_df[people_df['id'] == creator_id]
         if not person.empty:
             full_name = person.iloc[0].get('Full_Name', '') or person.iloc[0].get('name', '')
             role = people_role_mapping.get(creator_id, '')
-            return full_name, role
-        return '', ''
+            email = person.iloc[0].get('email', '')
+            return full_name, role, email
+        return '', '', ''
     
     def get_project_details(project_id):
         project_id_str = str(project_id)
@@ -532,15 +528,18 @@ def main():
                                     creator_id = None
                                     employee_name = ''
                                     emp_role = ''
-                                    
+                                    emp_email = ''  # --- CHANGE 3: initialise email ---
+
                                     if 'creator' in entry and isinstance(entry['creator'], dict):
                                         creator_id = entry['creator'].get('id', '')
                                         if creator_id:
-                                            employee_name, emp_role = get_employee_info(creator_id)
+                                            # --- CHANGE 4: unpack email from get_employee_info ---
+                                            employee_name, emp_role, emp_email = get_employee_info(creator_id)
                                     
                                     entry['creator_id'] = creator_id
                                     entry['employee_name'] = employee_name
                                     entry['emp_role'] = emp_role
+                                    entry['Email Address'] = emp_email  # --- CHANGE 5: store email in entry ---
                                     entry['project_id'] = project_id
                                     entry['project_name'] = project_details['name']
                                     entry['category_name'] = project_details['category_name']
@@ -568,7 +567,6 @@ def main():
     if all_time_entries:
         df = pd.DataFrame(all_time_entries)
         
-        # Extract task details
         if 'task' in df.columns:
             def extract_task_details(task_obj):
                 if isinstance(task_obj, dict):
@@ -583,14 +581,12 @@ def main():
             task_details = df['task'].apply(lambda x: pd.Series(extract_task_details(x)))
             df = pd.concat([df, task_details], axis=1)
         
-        # Calculate totals
         df['logged_hours'] = pd.to_numeric(df['logged_hours'], errors='coerce').fillna(0)
         df['logged_mins'] = pd.to_numeric(df['logged_mins'], errors='coerce').fillna(0)
         df['total_mins'] = (df['logged_hours'] * 60) + df['logged_mins']
         df['total_hours'] = df['total_mins'] / 60.0
         df['total_hours'] = df['total_hours'].round(2)
         
-        # Clean dates
         date_cols = ['project_start_date', 'project_end_date', 'date']
         for col in date_cols:
             if col in df.columns:
@@ -598,19 +594,17 @@ def main():
                 df[col] = df[col].str.split('T').str[0]
                 df[col] = df[col].replace(['nan', 'None', 'NaT', '<NA>'], '')
         
-        # Update status
         if 'status' in df.columns:
             df['status'] = df['status'].apply(lambda x: 'billable' if str(x).lower() == 'billed' else str(x))
         
-        # Ensure client_name column
         if 'client_name' not in df.columns:
             df['client_name'] = ''
         if 'project_name' in df.columns:
             df['client_name'] = df['project_name'].apply(get_client_name)
-        
-        # Final columns
+
+        # --- CHANGE 6: added emp_email to final columns ---
         final_columns = [
-            'creator_id', 'employee_name', 'emp_role', 'date', 'description',
+            'creator_id', 'employee_name', 'Email Address', 'emp_role', 'date', 'description',
             'logged_hours', 'logged_mins', 'total_mins', 'total_hours',
             'project_id', 'project_name', 'client_name', 'category_name',
             'project_start_date', 'project_end_date', 'status',
@@ -621,7 +615,6 @@ def main():
         existing_columns = [col for col in final_columns if col in df.columns]
         final_df = df[existing_columns].copy()
         
-        # Save CSV locally
         output_filename = "All Projects Timesheet.csv"
         final_df.to_csv(output_filename, index=False, encoding='utf-8')
         
@@ -636,14 +629,11 @@ def main():
         return None
 
 if __name__ == "__main__":
-    # Run the main function
     csv_file = main()
     
-    # Upload to Google Drive if file was created
     if csv_file:
         print("\n📤 UPLOADING TO GOOGLE DRIVE...")
         
-        # Get folder ID from environment variable
         drive_folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
         
         if drive_folder_id:
