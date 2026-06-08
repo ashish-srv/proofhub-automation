@@ -476,6 +476,7 @@ def main():
     # ================= FETCH TIME ENTRIES =================
     print("\n⏱️  Fetching timesheets and time entries...")
     all_projects = projects_df.to_dict('records')
+    print(f"📦 Total projects fetched: {len(all_projects)}")
     all_time_entries = []
     request_count = 0
     
@@ -501,6 +502,8 @@ def main():
                     if key in timesheets_data and isinstance(timesheets_data[key], list):
                         timesheets = timesheets_data[key]
                         break
+                # ADD THIS LINE HERE ↓
+                print(f"  [{i+1}/{len(all_projects)}] Project {project_id} → HTTP {timesheets_response.status_code} → {len(timesheets)} timesheets")
             
             for ts in timesheets:
                 timesheet_id = ts.get('id')
