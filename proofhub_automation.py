@@ -351,6 +351,7 @@ def download_all_data(endpoint, data_key=None, max_pages=3):
                 time.sleep(30)
                 continue
             else:
+                print(f"❌ API error on {endpoint} page {page}: HTTP {response.status_code} → {response.text[:200]}")
                 break
         except Exception as e:
             break
