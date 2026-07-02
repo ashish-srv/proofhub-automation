@@ -262,11 +262,13 @@ CLIENT_NAME_MAPPING = {
 'SCIT 2024': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT 2025': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT Pune': 'SCIT - Symbiosis Center  for Information Technology',
+ 'SCMC 2025': 'SCMC - Symbiosis Centre for Media & Communication',   
 'SCMC AY 2025': 'SCMC - Symbiosis Centre for Media & Communication',
 'SCMHRD': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD 2024': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD 2026': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD Executive MBA': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
+    
 'SCMS Bengaluru': 'Symbiosis Centre for Management Studies-SCMS Bengaluru',
 'SCMS Hyd 2025': 'SCMS HYD - Symbiosis Center for Management Studies - Hyderabad',
 'SCMS Hyderabad': 'SCMS HYD - Symbiosis Center for Management Studies - Hyderabad',
