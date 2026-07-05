@@ -312,6 +312,7 @@ CLIENT_NAME_MAPPING = {
 'SIIB 2026': 'SIIB - Symbiosis Institute of International Business',
 'SIMC AY 2025': 'SIMC - Symbiosis Institute of Media & Communication',
 'SIOM': 'SIOM - Symbiosis Institute  of Operation Management',
+    'SITEEE SM 2025':'Symbiosis Institute of Technology Engineering Entrance Examination',
 'SIT Hyd 2026': 'SIT Hyderabad- Symbiosis Institute of Technology',
 'SIT Hyderabad': 'SIT Hyderabad- Symbiosis Institute of Technology',
 'SIT Hyderabad': 'SIT Hyderabad- Symbiosis Institute of Technology',
