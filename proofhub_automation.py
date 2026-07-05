@@ -209,6 +209,7 @@ CLIENT_NAME_MAPPING = {
 'NIF Mumbai': 'NIF',
 'NIFD Kothrud': 'NIF',
 'NIFD Mumbai': 'NIF',
+    'Nirma MBA &amp; MBA HRM': 'NIRMA',
 'Nirma MBA & MBA HRM': 'NIRMA',
 'Nirma MBA SM': 'NIRMA',
 'Nirma MBA Social Media': 'NIRMA',
