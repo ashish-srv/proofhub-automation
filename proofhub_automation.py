@@ -128,7 +128,7 @@ CLIENT_NAME_MAPPING = {
 'Chandigarh University': 'Chandigarh University',
 'DES PU': 'DES Pune University Pune',
 'DESPU LP': 'DES Pune University Pune',
-'DY Patil - Navi Mumbai': 'PADMASREE DR.D.Y.PATIL UNIVERSITY',
+'DY Patil - Navi Mumbai': 'PADMASHREE DR.D.Y.PATIL UNIVERSITY',
 'DYPBS': 'PADMASREE DR.D.Y.PATIL UNIVERSITY',
 'DYPU': 'PADMASREE DR.D.Y.PATIL UNIVERSITY',
 'Easebuzz': 'Easebuzz Private Limited',
