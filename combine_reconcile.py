@@ -314,6 +314,7 @@ monthly_rollup = (
     .agg(
         task_count=("Task ID", "count"),
         quotation_id=("quotation_id", join_unique),
+        quotation_status=("quotation_status", join_unique),
         quotation_start_date=("quotation_start_date", first_non_null),
         quotation_end_date=("quotation_end_date", first_non_null),
         planned_creatives=("planned_creatives", "max"),
