@@ -1,0 +1,32 @@
+name: Creatives Dashboard - Daily Sync
+
+on:
+  schedule:
+    # Runs daily at 7:00 AM IST (01:30 UTC). Adjust to match your other pipelines' schedule.
+    - cron: '30 1 * * *'
+  workflow_dispatch: {}   # allows manual "Run workflow" trigger from the Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas openpyxl psycopg2-binary \
+                      google-api-python-client google-auth
+
+      - name: Run daily pipeline
+        env:
+          PROOFHUB_API_KEY: ${{ secrets.PROOFHUB_API_KEY }}
+          QUOTATIONS_DATABASE_URL: ${{ secrets.QUOTATIONS_DATABASE_URL }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          CREATIVES_DASHBOARD_DRIVE_FOLDER_ID: ${{ secrets.CREATIVES_DASHBOARD_DRIVE_FOLDER_ID }}
+        run: python3 run_daily_pipeline.py
