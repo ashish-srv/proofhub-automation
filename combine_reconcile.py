@@ -331,6 +331,24 @@ monthly_rollup = monthly_rollup.sort_values(["Client Name", "Year", "Month"])
 
 
 # ─────────────────────────────────────────────
+# STEP 6c — enforce correct dtypes for Excel output
+# (a mixed/object column reads as text in Zoho even if most
+# values are numeric or dates — this forces consistent types
+# so blanks become true empty cells, not text)
+# ─────────────────────────────────────────────
+DATE_COLS_TO_FIX = ["quotation_start_date", "quotation_end_date", "start_date", "end_date"]
+NUMERIC_COLS_TO_FIX = ["planned_creatives", "Creatives"]
+
+for df_ in (quotation_format_detail, result, monthly_rollup):
+    for col in DATE_COLS_TO_FIX:
+        if col in df_.columns:
+            df_[col] = pd.to_datetime(df_[col], errors="coerce")
+    for col in NUMERIC_COLS_TO_FIX:
+        if col in df_.columns:
+            df_[col] = pd.to_numeric(df_[col], errors="coerce")
+
+
+# ─────────────────────────────────────────────
 # STEP 7 — save outputs
 # ─────────────────────────────────────────────
 OUTPUT_EXCEL = "Creatives_Dashboard_Data.xlsx"
