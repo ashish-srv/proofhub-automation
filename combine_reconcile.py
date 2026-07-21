@@ -347,6 +347,10 @@ for df_ in (quotation_format_detail, result, monthly_rollup):
         if col in df_.columns:
             df_[col] = pd.to_numeric(df_[col], errors="coerce")
 
+# In the rollup only, a blank planned_creatives means no quotation covered
+# that client/month at all — show 0 instead of blank for easier Zoho math.
+monthly_rollup["planned_creatives"] = monthly_rollup["planned_creatives"].fillna(0)
+
 
 # ─────────────────────────────────────────────
 # STEP 7 — save outputs
