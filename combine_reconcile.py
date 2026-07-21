@@ -289,20 +289,22 @@ agg_map["quotation_end_date"] = "max"
 
 result = matched.groupby("Task ID", as_index=False).agg(agg_map)
 
-# add Month-Year directly on the task-level output too, not just the rollup
-result["Month-Year"] = pd.to_datetime(
-    result["Created At"], errors="coerce", utc=True
-).dt.strftime("%b-%Y")
+# add Month + Year directly on the task-level output too, not just the rollup
+MONTH_LABELS = {
+    1: "01. January", 2: "02. February", 3: "03. March", 4: "04. April",
+    5: "05. May", 6: "06. June", 7: "07. July", 8: "08. August",
+    9: "09. September", 10: "10. October", 11: "11. November", 12: "12. December",
+}
+_created_dt = pd.to_datetime(result["Created At"], errors="coerce", utc=True)
+result["Year"] = _created_dt.dt.year
+result["Month"] = _created_dt.dt.month.map(MONTH_LABELS)
 
 
 # ─────────────────────────────────────────────
 # STEP 6b — monthly Client + Stage rollup (fewer rows, for Zoho import)
 # ─────────────────────────────────────────────
 rollup_source = result.copy()
-rollup_source["Created At (date)"] = pd.to_datetime(
-    rollup_source["Created At"], errors="coerce", utc=True
-)
-# Month-Year already exists on result now, reused here
+# Year and Month already exist on result now, reused here
 
 def first_non_null(series):
     non_null = series.dropna()
@@ -310,7 +312,7 @@ def first_non_null(series):
 
 monthly_rollup = (
     rollup_source
-    .groupby(["Client Name", "Project", "Month-Year", "Workflow", "Stage"], dropna=False)
+    .groupby(["Client Name", "Project", "Year", "Month", "Workflow", "Stage"], dropna=False)
     .agg(
         task_count=("Task ID", "count"),
         quotation_id=("quotation_id", join_unique),
@@ -323,9 +325,9 @@ monthly_rollup = (
     .reset_index()
 )
 
-# sort chronologically rather than alphabetically by Month-Year text
-monthly_rollup["_sort_date"] = pd.to_datetime(monthly_rollup["Month-Year"], format="%b-%Y", errors="coerce")
-monthly_rollup = monthly_rollup.sort_values(["Client Name", "_sort_date"]).drop(columns=["_sort_date"])
+# Month labels start with "01.", "02." etc., so sorting the string sorts
+# chronologically within a year — no separate date parsing needed.
+monthly_rollup = monthly_rollup.sort_values(["Client Name", "Year", "Month"])
 
 
 # ─────────────────────────────────────────────
