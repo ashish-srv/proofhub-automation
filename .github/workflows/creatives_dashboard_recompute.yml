@@ -1,0 +1,25 @@
+name: Creatives Dashboard - Recompute Only (after mapping edits)
+
+on:
+  workflow_dispatch: {}   # manual trigger only — no schedule
+
+jobs:
+  recompute:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pandas openpyxl google-api-python-client google-auth
+
+      - name: Recompute reconciliation (no ProofHub/DB fetch)
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          CREATIVES_DASHBOARD_DRIVE_FOLDER_ID: ${{ secrets.CREATIVES_DASHBOARD_DRIVE_FOLDER_ID }}
+        run: python3 recompute_reconciliation.py
