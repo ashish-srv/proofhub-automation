@@ -284,6 +284,11 @@ agg_map["quotation_end_date"] = "max"
 
 result = matched.groupby("Task ID", as_index=False).agg(agg_map)
 
+# add Month-Year directly on the task-level output too, not just the rollup
+result["Month-Year"] = pd.to_datetime(
+    result["Created At"], errors="coerce", utc=True
+).dt.strftime("%b-%Y")
+
 
 # ─────────────────────────────────────────────
 # STEP 6b — monthly Client + Stage rollup (fewer rows, for Zoho import)
@@ -292,7 +297,7 @@ rollup_source = result.copy()
 rollup_source["Created At (date)"] = pd.to_datetime(
     rollup_source["Created At"], errors="coerce", utc=True
 )
-rollup_source["Month-Year"] = rollup_source["Created At (date)"].dt.strftime("%b-%Y")
+# Month-Year already exists on result now, reused here
 
 def first_non_null(series):
     non_null = series.dropna()
@@ -300,7 +305,7 @@ def first_non_null(series):
 
 monthly_rollup = (
     rollup_source
-    .groupby(["Client Name", "Month-Year", "Workflow", "Stage"], dropna=False)
+    .groupby(["Client Name", "Project", "Month-Year", "Workflow", "Stage"], dropna=False)
     .agg(
         task_count=("Task ID", "count"),
         quotation_id=("quotation_id", join_unique),
@@ -320,13 +325,15 @@ monthly_rollup = monthly_rollup.sort_values(["Client Name", "_sort_date"]).drop(
 # STEP 7 — save outputs
 # ─────────────────────────────────────────────
 OUTPUT_EXCEL = "Creatives_Dashboard_Data.xlsx"
+quotation_format_detail_out = quotation_format_detail.rename(columns={"client_name": "Quotation_Client_Name"})
+
 with pd.ExcelWriter(OUTPUT_EXCEL, engine="openpyxl") as writer:
-    quotation_format_detail.to_excel(writer, sheet_name="Quotation_Format_Detail", index=False)
+    quotation_format_detail_out.to_excel(writer, sheet_name="Quotation_Format_Detail", index=False)
     result.to_excel(writer, sheet_name="ProofHub_Tasks_With_Quotation", index=False)
     monthly_rollup.to_excel(writer, sheet_name="Monthly_Client_Status_Rollup", index=False)
 
 print(f"\n✅ {OUTPUT_EXCEL} written:")
-print(f"   - Quotation_Format_Detail: {len(quotation_format_detail)} rows")
+print(f"   - Quotation_Format_Detail: {len(quotation_format_detail_out)} rows")
 print(f"   - ProofHub_Tasks_With_Quotation: {len(result)} rows ({len(proofhub_df)} raw ProofHub tasks in)")
 print(f"   - Monthly_Client_Status_Rollup: {len(monthly_rollup)} rows")
 print("\n" + "=" * 50)
