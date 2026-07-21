@@ -24,10 +24,10 @@ HEADERS  = {
 }
 
 # ─────────────────────────────────────────────
-# DATE FILTER
+# DATE FILTER — Apr 2025 through today (updates automatically every run)
 # ─────────────────────────────────────────────
-DATE_FROM = datetime(2025, 4,  1,  0,  0,  0, tzinfo=timezone.utc)
-DATE_TO   = datetime(2026, 3, 31, 23, 59, 59, tzinfo=timezone.utc)
+DATE_FROM = datetime(2025, 4, 1, 0, 0, 0, tzinfo=timezone.utc)
+DATE_TO   = datetime.now(timezone.utc)
 
 
 def in_date_range(date_str):
@@ -40,6 +40,38 @@ def in_date_range(date_str):
         return DATE_FROM <= dt <= DATE_TO
     except Exception:
         return False
+
+
+def safe_get(url, headers, params=None, max_retries=6):
+    """
+    Wrapper around requests.get that automatically waits and retries
+    on 429 rate-limit responses, honoring ProofHub's retry_after value
+    (falls back to exponential backoff if that field isn't present).
+    """
+    for attempt in range(1, max_retries + 1):
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 429:
+            wait_seconds = 10
+            try:
+                body = response.json()
+                retry_after_raw = str(body.get("retry_after", "")).strip()
+                digits = "".join(c for c in retry_after_raw if c.isdigit())
+                if digits:
+                    wait_seconds = int(digits)
+            except Exception:
+                pass
+
+            wait_seconds = max(wait_seconds, attempt * 5)  # back off a bit more each retry
+            print(f"       ⏳ Rate limited (429). Waiting {wait_seconds}s before retry "
+                  f"({attempt}/{max_retries})...")
+            time.sleep(wait_seconds)
+            continue
+
+        return response
+
+    print(f"       ❌ Gave up after {max_retries} retries due to repeated rate limiting: {url}")
+    return response
 
 
 def extract_list(data, *keys):
@@ -62,7 +94,7 @@ def extract_list(data, *keys):
 # ─────────────────────────────────────────────
 def get_all_projects():
     print("Fetching all projects...")
-    response = requests.get(f"{BASE_URL}/projects", headers=HEADERS)
+    response = safe_get(f"{BASE_URL}/projects", headers=HEADERS)
 
     if response.status_code != 200:
         print(f"❌ Projects error {response.status_code}: {response.text[:200]}")
@@ -77,7 +109,8 @@ def get_all_projects():
 # STEP 2 — Get todolists for a project
 # ─────────────────────────────────────────────
 def get_todolists(project_id):
-    response = requests.get(
+    time.sleep(0.5)  # small gap before each call to stay under rate limits
+    response = safe_get(
         f"{BASE_URL}/projects/{project_id}/todolists",
         headers=HEADERS
     )
@@ -96,7 +129,8 @@ def get_all_tasks(project_id, todolist_id):
     all_tasks = []
 
     for params in [{}, {"completed": "true"}]:
-        response = requests.get(url, headers=HEADERS, params=params)
+        time.sleep(0.5)  # small gap before each call to stay under rate limits
+        response = safe_get(url, headers=HEADERS, params=params)
         if response.status_code == 200:
             for task in extract_list(response.json(), "tasks"):
                 tid = task.get("id")
@@ -105,7 +139,6 @@ def get_all_tasks(project_id, todolist_id):
                     all_tasks.append(task)
         else:
             print(f"       ❌ Tasks error {response.status_code}: {response.text[:100]}")
-        time.sleep(0.2)  # rate limit safety
 
     return all_tasks
 
@@ -174,6 +207,7 @@ for proj in projects:
         if matched:
             print(f"   ✅ '{tl_name}': {matched} tasks in range")
 
+    time.sleep(0.5)  # small gap between projects to stay under rate limits
     print()
 
 # ─────────────────────────────────────────────
