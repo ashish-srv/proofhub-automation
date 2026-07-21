@@ -16,9 +16,6 @@ if not API_KEY:
     print("❌ PROOFHUB_API_KEY environment variable not set.")
     exit()
 
-# 🔹 TEST — single project only
-TEST_PROJECT_ID = "6408550176"
-
 BASE_URL = f"https://{COMPANY_NAME}.proofhub.com/api/v3"
 HEADERS  = {
     "X-API-KEY":  API_KEY,
@@ -154,12 +151,6 @@ projects = get_all_projects()
 if not projects:
     print("❌ No projects found. Check API key.")
     exit()
-
-projects = [p for p in projects if str(p.get("id")) == str(TEST_PROJECT_ID)]
-if not projects:
-    print(f"❌ TEST_PROJECT_ID {TEST_PROJECT_ID} not found among fetched projects.")
-    exit()
-print(f"🔹 TEST — restricting to project ID {TEST_PROJECT_ID} only\n")
 
 all_rows = []
 
