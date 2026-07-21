@@ -79,6 +79,11 @@ require_file(MAPPING_EXCEL)
 proofhub_df  = pd.read_csv(PROOFHUB_CSV, dtype=str, keep_default_na=False)
 quotation_df = pd.read_csv(QUOTATION_CSV, dtype=str, keep_default_na=False)
 
+WORKFLOW_FILTER = "creative creation"  # case-insensitive match
+before_count = len(proofhub_df)
+proofhub_df = proofhub_df[proofhub_df["Workflow"].str.strip().str.casefold() == WORKFLOW_FILTER].copy()
+print(f"ℹ Filtered to Workflow = 'Creative Creation': {len(proofhub_df)} of {before_count} tasks kept")
+
 missing_cols = [c for c in REQUIRED_QUOTATION_FIELDS if c not in quotation_df.columns]
 if missing_cols:
     print(f"❌ Quotation_Required_Data.csv is missing expected columns: {missing_cols}")
