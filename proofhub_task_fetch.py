@@ -165,7 +165,13 @@ all_rows = []
 
 for proj in projects:
     project_id   = proj.get("id")
-    project_name = proj.get("name", str(project_id))
+    project_name = (
+        proj.get("name")
+        or proj.get("title")
+        or proj.get("project_name")
+        or proj.get("label")
+        or str(project_id)
+    )
 
     print(f"📁 Project: '{project_name}' (ID: {project_id})")
 
