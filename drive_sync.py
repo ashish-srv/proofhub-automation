@@ -18,12 +18,55 @@ Auth:
 import io
 import json
 import os
+import socket
+import ssl
+import time
+from functools import wraps
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+from googleapiclient.errors import HttpError
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
+
+RETRYABLE_EXCEPTIONS = (ssl.SSLError, ConnectionError, TimeoutError, socket.error, BrokenPipeError)
+
+
+def with_retries(max_retries=4, base_delay=5):
+    """
+    Decorator that retries a function on transient network/SSL errors
+    (like the SSLEOFError seen during OAuth token refresh on GitHub-hosted
+    runners) and on 5xx errors from the Drive API. Backs off a bit more
+    each retry. Re-raises the last error if all attempts fail.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    return func(*args, **kwargs)
+                except RETRYABLE_EXCEPTIONS as e:
+                    last_exc = e
+                    wait = base_delay * attempt
+                    print(f"⚠ Network error in {func.__name__} ({type(e).__name__}: {e}). "
+                          f"Retrying in {wait}s ({attempt}/{max_retries})...")
+                    time.sleep(wait)
+                except HttpError as e:
+                    status = getattr(e.resp, "status", None)
+                    if status and 500 <= status < 600:
+                        last_exc = e
+                        wait = base_delay * attempt
+                        print(f"⚠ Drive API {status} error in {func.__name__}. "
+                              f"Retrying in {wait}s ({attempt}/{max_retries})...")
+                        time.sleep(wait)
+                    else:
+                        raise  # not a transient error (e.g. 403/404) — fail immediately
+            print(f"❌ Gave up on {func.__name__} after {max_retries} retries.")
+            raise last_exc
+        return wrapper
+    return decorator
 
 
 def get_drive_service():
@@ -41,6 +84,7 @@ def get_drive_service():
     return build("drive", "v3", credentials=credentials)
 
 
+@with_retries()
 def find_file_in_folder(service, folder_id, filename):
     """Return the file's Drive ID if a file with this exact name exists in the folder, else None."""
     query = (
@@ -60,6 +104,7 @@ def find_file_in_folder(service, folder_id, filename):
     return files[0]["id"] if files else None
 
 
+@with_retries()
 def download_file(service, folder_id, filename, local_path):
     """Download filename from the Drive folder to local_path. Returns True if found and downloaded."""
     file_id = find_file_in_folder(service, folder_id, filename)
@@ -78,6 +123,7 @@ def download_file(service, folder_id, filename, local_path):
     return True
 
 
+@with_retries()
 def upload_file(service, folder_id, local_path, filename=None):
     """
     Upload local_path to the Drive folder.
