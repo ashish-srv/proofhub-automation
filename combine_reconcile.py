@@ -344,7 +344,10 @@ if os.path.exists(TIMESHEET_CSV):
     else:
         ts["task_id"] = ts["task_id"].str.strip()
         ts["_email_norm"] = ts["Email Address"].str.strip().str.lower()
-        ts["total_hours"] = pd.to_numeric(ts["total_hours"], errors="coerce").fillna(0)
+        ts["total_hours"] = pd.to_numeric(
+            ts["total_hours"].str.replace(",", "", regex=False).str.strip(),
+            errors="coerce"
+        ).fillna(0)
         ts_date = pd.to_datetime(ts["date"], format="%Y-%m-%d", errors="coerce")
         ts["_month_label"] = ts_date.dt.month.map(MONTH_LABELS)
         ts["_year"] = ts_date.dt.year
@@ -354,6 +357,14 @@ if os.path.exists(TIMESHEET_CSV):
             print(f"⚠ {bad_dates} timesheet row(s) have unparseable dates — excluded from cost matching.")
 
         # salary rate lookup: (email, month_label, year) -> (salary rate, op rate)
+        def clean_number(value):
+            """Strip currency symbols, commas, and spaces before numeric conversion,
+            so 'Rs 1,236.85' / '₹1,236.85' / '1,236.85' all parse as 1236.85."""
+            s = str(value).strip()
+            for junk in ("Rs.", "Rs", "₹", "INR", ",", " "):
+                s = s.replace(junk, "")
+            return pd.to_numeric(s, errors="coerce")
+
         rate_lookup = {}
         if os.path.exists(SALARY_CSV):
             sal = pd.read_csv(SALARY_CSV, dtype=str, keep_default_na=False)
@@ -369,8 +380,8 @@ if os.path.exists(TIMESHEET_CSV):
                         str(pd.to_numeric(srow["Year"], errors="coerce")).replace(".0", ""),
                     )
                     rate_lookup[key] = (
-                        pd.to_numeric(srow["Per Hour Salary"], errors="coerce"),
-                        pd.to_numeric(srow["Per Hour Operational Cost"], errors="coerce"),
+                        clean_number(srow["Per Hour Salary"]),
+                        clean_number(srow["Per Hour Operational Cost"]),
                     )
         else:
             print(f"⚠ '{SALARY_CSV}' not found — cost columns will be 0.")
