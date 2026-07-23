@@ -23,7 +23,7 @@ import os
 import sys
 import requests
 
-from drive_sync import get_drive_service, upload_file, find_file_in_folder
+from drive_sync import get_drive_service, upload_file
 
 ACCOUNTS_URL  = "https://accounts.zoho.in/oauth/v2/token"
 ANALYTICS_URL = "https://analyticsapi.zoho.in/restapi/v2"
@@ -152,14 +152,8 @@ def main():
     access_token = get_access_token(client_id, client_secret, refresh_token)
     export_view_as_csv(access_token, org_id, workspace_id, view_id, OUTPUT_CSV)
 
-    print("▶ Uploading to Drive (delete old file first, then upload fresh)...")
+    print("▶ Uploading to Drive (overwrites existing file content in place)...")
     service = get_drive_service()
-
-    existing_id = find_file_in_folder(service, drive_folder, OUTPUT_CSV)
-    if existing_id:
-        service.files().delete(fileId=existing_id, supportsAllDrives=True).execute()
-        print(f"🗑 Deleted old '{OUTPUT_CSV}' from Drive.")
-
     upload_file(service, drive_folder, OUTPUT_CSV)
 
     print("\n✅ Zoho salary export complete.")
