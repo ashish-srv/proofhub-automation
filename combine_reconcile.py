@@ -55,7 +55,8 @@ QUOTATION_COL_CLIENT     = "Client Name"
 
 REQUIRED_QUOTATION_FIELDS = [
     "quotation_id", "client_name", "location", "start_date", "end_date",
-    "status", "Department", "Sub Department", "Format", "Creatives"
+    "status", "Department", "Sub Department", "Format", "Creatives",
+    "Estimated Hours", "Estimated Cost"
 ]
 
 
@@ -198,6 +199,8 @@ quotation_df = quotation_df[quotation_df["Client Name"].notna() & (quotation_df[
 # STEP 5 — group quotation data to one row per quotation
 # ─────────────────────────────────────────────
 quotation_df["Creatives"] = pd.to_numeric(quotation_df["Creatives"], errors="coerce").fillna(0)
+quotation_df["Estimated Hours"] = pd.to_numeric(quotation_df["Estimated Hours"], errors="coerce").fillna(0)
+quotation_df["Estimated Cost"] = pd.to_numeric(quotation_df["Estimated Cost"], errors="coerce").fillna(0)
 
 # Detail table (planned, by department/format) — kept as-is, Client Name added
 quotation_format_detail = quotation_df.copy()
@@ -205,15 +208,20 @@ quotation_format_detail = quotation_df.copy()
 quotation_summary = (
     quotation_df
     .groupby(["Client Name", "quotation_id", "client_name", "start_date", "end_date", "status", "location"], dropna=False)
-    ["Creatives"].sum()
+    .agg(
+        planned_creatives=("Creatives", "sum"),
+        _est_hours=("Estimated Hours", "sum"),
+        _est_cost=("Estimated Cost", "sum"),
+    )
     .reset_index()
     .rename(columns={
-        "Creatives": "planned_creatives",
         "client_name": "quotation_client_name",
         "start_date": "quotation_start_date",
         "end_date": "quotation_end_date",
         "status": "quotation_status",
         "location": "quotation_location",
+        "_est_hours": "Quotation Estimated Hours",
+        "_est_cost": "Quotation Estimated Cost",
     })
 )
 
@@ -223,6 +231,14 @@ quotation_summary["quotation_start_date_parsed"] = pd.to_datetime(
 quotation_summary["quotation_end_date_parsed"] = pd.to_datetime(
     quotation_summary["quotation_end_date"], errors="coerce"
 ).dt.date
+
+# Merge the quotation-level Estimated Hours/Cost totals onto the format
+# detail sheet too, so each line item also shows its quotation's total.
+quotation_format_detail = quotation_format_detail.merge(
+    quotation_summary[["quotation_id", "Quotation Estimated Hours", "Quotation Estimated Cost"]],
+    on="quotation_id",
+    how="left"
+)
 
 
 # ─────────────────────────────────────────────
@@ -284,6 +300,8 @@ agg_map = {c: "first" for c in proofhub_cols if c != "Task ID"}
 for c in quotation_join_cols:
     agg_map[c] = join_unique
 agg_map["planned_creatives"] = sum_or_blank
+agg_map["Quotation Estimated Hours"] = sum_or_blank
+agg_map["Quotation Estimated Cost"] = sum_or_blank
 agg_map["quotation_start_date"] = "min"
 agg_map["quotation_end_date"] = "max"
 
@@ -310,19 +328,30 @@ def first_non_null(series):
     non_null = series.dropna()
     return non_null.iloc[0] if len(non_null) else pd.NA
 
+def join_task_ids(series):
+    ids = sorted(set(str(x) for x in series.dropna() if str(x) != ""))
+    return "_".join(ids) if ids else pd.NA
+
 monthly_rollup = (
     rollup_source
     .groupby(["Client Name", "Project", "Year", "Month", "Workflow", "Stage"], dropna=False)
     .agg(
         task_count=("Task ID", "count"),
+        Task_ids=("Task ID", join_task_ids),
         quotation_id=("quotation_id", join_unique),
         quotation_client_name=("quotation_client_name", join_unique),
         quotation_status=("quotation_status", join_unique),
         quotation_start_date=("quotation_start_date", first_non_null),
         quotation_end_date=("quotation_end_date", first_non_null),
         planned_creatives=("planned_creatives", "max"),
+        _quotation_est_hours=("Quotation Estimated Hours", "max"),
+        _quotation_est_cost=("Quotation Estimated Cost", "max"),
     )
     .reset_index()
+    .rename(columns={
+        "_quotation_est_hours": "Quotation Estimated Hours",
+        "_quotation_est_cost": "Quotation Estimated Cost",
+    })
 )
 
 # Month labels start with "01.", "02." etc., so sorting the string sorts
@@ -337,7 +366,8 @@ monthly_rollup = monthly_rollup.sort_values(["Client Name", "Year", "Month"])
 # so blanks become true empty cells, not text)
 # ─────────────────────────────────────────────
 DATE_COLS_TO_FIX = ["quotation_start_date", "quotation_end_date", "start_date", "end_date"]
-NUMERIC_COLS_TO_FIX = ["planned_creatives", "Creatives"]
+NUMERIC_COLS_TO_FIX = ["planned_creatives", "Creatives", "Estimated Hours", "Estimated Cost",
+                       "Quotation Estimated Hours", "Quotation Estimated Cost"]
 
 for df_ in (quotation_format_detail, result, monthly_rollup):
     for col in DATE_COLS_TO_FIX:
@@ -347,9 +377,11 @@ for df_ in (quotation_format_detail, result, monthly_rollup):
         if col in df_.columns:
             df_[col] = pd.to_numeric(df_[col], errors="coerce")
 
-# In the rollup only, a blank planned_creatives means no quotation covered
-# that client/month at all — show 0 instead of blank for easier Zoho math.
+# In the rollup only, a blank value means no quotation covered that
+# client/month at all — show 0 instead of blank for easier Zoho math.
 monthly_rollup["planned_creatives"] = monthly_rollup["planned_creatives"].fillna(0)
+monthly_rollup["Quotation Estimated Hours"] = monthly_rollup["Quotation Estimated Hours"].fillna(0)
+monthly_rollup["Quotation Estimated Cost"] = monthly_rollup["Quotation Estimated Cost"].fillna(0)
 
 
 # ─────────────────────────────────────────────
