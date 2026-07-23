@@ -31,6 +31,11 @@ MAPPING_EXCEL  = "ProofHub_ProjectName_ClientName_Mapping.xlsx"
 OUTPUT_EXCEL   = "Creatives_Dashboard_Data.xlsx"
 RAW_PROOFHUB   = "proofhub_tasks.csv"
 RAW_QUOTATIONS = "Quotation_Required_Data.csv"
+TIMESHEET_CSV  = "All Projects Timesheet.csv"
+SALARY_CSV     = "Employee Monthly Rate.csv"
+
+# The timesheet CSV lives in a DIFFERENT Drive folder than the creatives one
+TIMESHEET_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
 
 def require_downloaded(service, filename):
@@ -48,6 +53,14 @@ def main():
     require_downloaded(service, MAPPING_EXCEL)
     require_downloaded(service, RAW_PROOFHUB)
     require_downloaded(service, RAW_QUOTATIONS)
+
+    # optional inputs for hours/cost enrichment — warn but continue if absent
+    if TIMESHEET_FOLDER_ID:
+        download_file(service, TIMESHEET_FOLDER_ID, TIMESHEET_CSV, TIMESHEET_CSV)
+    else:
+        print("⚠ GOOGLE_DRIVE_FOLDER_ID not set — timesheet download skipped, "
+              "hours/employee/cost columns will be 0.")
+    download_file(service, DRIVE_FOLDER_ID, SALARY_CSV, SALARY_CSV)
 
     print("\n▶ Re-running reconciliation...")
     result = subprocess.run("python3 combine_reconcile.py", shell=True)
