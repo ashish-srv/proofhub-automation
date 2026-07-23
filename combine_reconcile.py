@@ -44,6 +44,8 @@ from openpyxl import load_workbook
 PROOFHUB_CSV   = "proofhub_tasks.csv"
 QUOTATION_CSV  = "Quotation_Required_Data.csv"
 MAPPING_EXCEL  = "ProofHub_ProjectName_ClientName_Mapping.xlsx"
+TIMESHEET_CSV  = "All Projects Timesheet.csv"     # optional — enrichment skipped if absent
+SALARY_CSV     = "Employee Monthly Rate.csv"      # optional — cost columns 0 if absent
 
 PROOFHUB_SHEET   = "ProofHub_Client_Mapping"
 QUOTATION_SHEET  = "Quotation_Client_Mapping"
@@ -319,6 +321,100 @@ result["Month"] = _created_dt.dt.month.map(MONTH_LABELS)
 
 
 # ─────────────────────────────────────────────
+# STEP 6a — Timesheet + Salary enrichment (per task)
+# Matches each Task ID against 'All Projects Timesheet.csv' to compute
+# logged hours, distinct employee count, and cost (via 'Employee Monthly
+# Rate.csv', matched on Email Address + the timesheet entry's own
+# month/year). Both files optional — enrichment is skipped with a
+# warning if either is missing.
+# ─────────────────────────────────────────────
+
+task_hours_map = {}      # task_id -> summed logged hours
+task_salary_map = {}     # task_id -> summed salary cost
+task_opcost_map = {}     # task_id -> summed operational cost
+task_employees_map = {}  # task_id -> set of employee emails
+
+if os.path.exists(TIMESHEET_CSV):
+    ts = pd.read_csv(TIMESHEET_CSV, dtype=str, keep_default_na=False)
+
+    ts_required = ["employee_name", "Email Address", "date", "total_hours", "task_id"]
+    ts_missing = [c for c in ts_required if c not in ts.columns]
+    if ts_missing:
+        print(f"⚠ '{TIMESHEET_CSV}' missing columns {ts_missing} — timesheet enrichment skipped.")
+    else:
+        ts["task_id"] = ts["task_id"].str.strip()
+        ts["_email_norm"] = ts["Email Address"].str.strip().str.lower()
+        ts["total_hours"] = pd.to_numeric(ts["total_hours"], errors="coerce").fillna(0)
+        ts_date = pd.to_datetime(ts["date"], format="%Y-%m-%d", errors="coerce")
+        ts["_month_label"] = ts_date.dt.month.map(MONTH_LABELS)
+        ts["_year"] = ts_date.dt.year
+
+        bad_dates = int(ts_date.isna().sum())
+        if bad_dates:
+            print(f"⚠ {bad_dates} timesheet row(s) have unparseable dates — excluded from cost matching.")
+
+        # salary rate lookup: (email, month_label, year) -> (salary rate, op rate)
+        rate_lookup = {}
+        if os.path.exists(SALARY_CSV):
+            sal = pd.read_csv(SALARY_CSV, dtype=str, keep_default_na=False)
+            sal_required = ["Email Address", "Month", "Year", "Per Hour Salary", "Per Hour Operational Cost"]
+            sal_missing = [c for c in sal_required if c not in sal.columns]
+            if sal_missing:
+                print(f"⚠ '{SALARY_CSV}' missing columns {sal_missing} — cost columns will be 0.")
+            else:
+                for _, srow in sal.iterrows():
+                    key = (
+                        str(srow["Email Address"]).strip().lower(),
+                        str(srow["Month"]).strip(),
+                        str(pd.to_numeric(srow["Year"], errors="coerce")).replace(".0", ""),
+                    )
+                    rate_lookup[key] = (
+                        pd.to_numeric(srow["Per Hour Salary"], errors="coerce"),
+                        pd.to_numeric(srow["Per Hour Operational Cost"], errors="coerce"),
+                    )
+        else:
+            print(f"⚠ '{SALARY_CSV}' not found — cost columns will be 0.")
+
+        unmatched_rates = set()
+        for _, trow in ts.iterrows():
+            tid = trow["task_id"]
+            if not tid:
+                continue
+            hours = trow["total_hours"]
+
+            task_hours_map[tid] = task_hours_map.get(tid, 0) + hours
+            task_employees_map.setdefault(tid, set()).add(trow["_email_norm"])
+
+            if rate_lookup and pd.notna(trow["_month_label"]):
+                key = (trow["_email_norm"], trow["_month_label"], str(int(trow["_year"])))
+                rates = rate_lookup.get(key)
+                if rates is not None:
+                    sal_rate, op_rate = rates
+                    if pd.notna(sal_rate):
+                        task_salary_map[tid] = task_salary_map.get(tid, 0) + hours * sal_rate
+                    if pd.notna(op_rate):
+                        task_opcost_map[tid] = task_opcost_map.get(tid, 0) + hours * op_rate
+                else:
+                    unmatched_rates.add(key)
+
+        if unmatched_rates:
+            print(f"⚠ {len(unmatched_rates)} employee/month-year combination(s) in the timesheet had "
+                  f"no matching rate in '{SALARY_CSV}' — their hours are counted but cost excluded. "
+                  f"Sample: {sorted(unmatched_rates)[:5]}")
+
+        print(f"ℹ Timesheet enrichment: {len(task_hours_map)} task(s) matched with logged time.")
+else:
+    print(f"⚠ '{TIMESHEET_CSV}' not found — Employees Worked Count / ProofHub Logged Hours / cost columns will be 0.")
+
+result["_tid_str"] = result["Task ID"].astype(str).str.strip()
+result["ProofHub Logged Hours"] = result["_tid_str"].map(task_hours_map)
+result["Actual Salary Cost"] = result["_tid_str"].map(task_salary_map)
+result["Actual Operational Cost"] = result["_tid_str"].map(task_opcost_map)
+result["_employees_set"] = result["_tid_str"].map(task_employees_map)
+result = result.drop(columns=["_tid_str"])
+
+
+# ─────────────────────────────────────────────
 # STEP 6b — monthly Client + Stage rollup (fewer rows, for Zoho import)
 # ─────────────────────────────────────────────
 rollup_source = result.copy()
@@ -331,6 +427,13 @@ def first_non_null(series):
 def join_task_ids(series):
     ids = sorted(set(str(x) for x in series.dropna() if str(x) != ""))
     return "_".join(ids) if ids else pd.NA
+
+def count_distinct_employees(series):
+    all_emails = set()
+    for s in series.dropna():
+        if isinstance(s, set):
+            all_emails |= s
+    return len(all_emails)
 
 monthly_rollup = (
     rollup_source
@@ -346,13 +449,24 @@ monthly_rollup = (
         planned_creatives=("planned_creatives", "max"),
         _quotation_est_hours=("Quotation Estimated Hours", "max"),
         _quotation_est_cost=("Quotation Estimated Cost", "max"),
+        _employees_worked=("_employees_set", count_distinct_employees),
+        _logged_hours=("ProofHub Logged Hours", "sum"),
+        _salary_cost=("Actual Salary Cost", "sum"),
+        _op_cost=("Actual Operational Cost", "sum"),
     )
     .reset_index()
     .rename(columns={
         "_quotation_est_hours": "Quotation Estimated Hours",
         "_quotation_est_cost": "Quotation Estimated Cost",
+        "_employees_worked": "Employees Worked Count",
+        "_logged_hours": "ProofHub Logged Hours",
+        "_salary_cost": "Actual Salary Cost",
+        "_op_cost": "Actual Operational Cost",
     })
 )
+
+# drop the helper set column from the task-level sheet before writing
+result = result.drop(columns=["_employees_set"])
 
 # Month labels start with "01.", "02." etc., so sorting the string sorts
 # chronologically within a year — no separate date parsing needed.
@@ -367,7 +481,9 @@ monthly_rollup = monthly_rollup.sort_values(["Client Name", "Year", "Month"])
 # ─────────────────────────────────────────────
 DATE_COLS_TO_FIX = ["quotation_start_date", "quotation_end_date", "start_date", "end_date"]
 NUMERIC_COLS_TO_FIX = ["planned_creatives", "Creatives", "Estimated Hours", "Estimated Cost",
-                       "Quotation Estimated Hours", "Quotation Estimated Cost"]
+                       "Quotation Estimated Hours", "Quotation Estimated Cost",
+                       "ProofHub Logged Hours", "Actual Salary Cost", "Actual Operational Cost",
+                       "Employees Worked Count"]
 
 for df_ in (quotation_format_detail, result, monthly_rollup):
     for col in DATE_COLS_TO_FIX:
@@ -382,6 +498,10 @@ for df_ in (quotation_format_detail, result, monthly_rollup):
 monthly_rollup["planned_creatives"] = monthly_rollup["planned_creatives"].fillna(0)
 monthly_rollup["Quotation Estimated Hours"] = monthly_rollup["Quotation Estimated Hours"].fillna(0)
 monthly_rollup["Quotation Estimated Cost"] = monthly_rollup["Quotation Estimated Cost"].fillna(0)
+monthly_rollup["ProofHub Logged Hours"] = monthly_rollup["ProofHub Logged Hours"].fillna(0)
+monthly_rollup["Actual Salary Cost"] = monthly_rollup["Actual Salary Cost"].fillna(0)
+monthly_rollup["Actual Operational Cost"] = monthly_rollup["Actual Operational Cost"].fillna(0)
+monthly_rollup["Employees Worked Count"] = monthly_rollup["Employees Worked Count"].fillna(0)
 
 
 # ─────────────────────────────────────────────
