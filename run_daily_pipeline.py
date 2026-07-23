@@ -31,6 +31,11 @@ MAPPING_EXCEL   = "ProofHub_ProjectName_ClientName_Mapping.xlsx"
 OUTPUT_EXCEL    = "Creatives_Dashboard_Data.xlsx"
 RAW_PROOFHUB    = "proofhub_tasks.csv"
 RAW_QUOTATIONS  = "Quotation_Required_Data.csv"
+TIMESHEET_CSV   = "All Projects Timesheet.csv"
+SALARY_CSV      = "Employee Monthly Rate.csv"
+
+# The timesheet CSV lives in a DIFFERENT Drive folder than the creatives one
+TIMESHEET_FOLDER_ID = os.environ.get("GOOGLE_DRIVE_FOLDER_ID")
 
 
 def run_step(description, command):
@@ -57,6 +62,17 @@ def main():
 
     # ── Step 3: fetch quotations ──
     run_step("Fetching quotations", "python3 quotations_fetch.py")
+
+    # ── Step 3b: pull timesheet + salary CSVs from Drive (for cost enrichment) ──
+    print("\n▶ Downloading timesheet + salary data from Drive...")
+    if TIMESHEET_FOLDER_ID:
+        download_file(service, TIMESHEET_FOLDER_ID, TIMESHEET_CSV, TIMESHEET_CSV)
+    else:
+        print("⚠ GOOGLE_DRIVE_FOLDER_ID not set — timesheet download skipped, "
+              "hours/employee/cost columns will be 0.")
+    download_file(service, DRIVE_FOLDER_ID, SALARY_CSV, SALARY_CSV)
+    # both files are optional — combine_reconcile.py handles their absence
+    # with warnings and zeroed columns rather than failing.
 
     # ── Step 4: combine + reconcile ──
     run_step("Combining and reconciling", "python3 combine_reconcile.py")
