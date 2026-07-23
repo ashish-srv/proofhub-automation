@@ -1,0 +1,35 @@
+name: Creatives Dashboard - Zoho Salary Export
+
+on:
+  schedule:
+    # Runs daily at 6:30 AM IST (01:00 UTC) — 30 minutes BEFORE the daily sync,
+    # so the salary CSV in Drive is fresh when the sync's combine step reads it.
+    - cron: '0 1 * * *'
+  workflow_dispatch: {}   # allows manual "Run workflow" trigger
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests google-api-python-client google-auth
+
+      - name: Export Employee Monthly Rate from Zoho to Drive
+        env:
+          ZOHO_CLIENT_ID: ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
+          ZOHO_ORG_ID: ${{ secrets.ZOHO_ORG_ID }}
+          ZOHO_WORKSPACE_ID: ${{ secrets.ZOHO_WORKSPACE_ID }}
+          ZOHO_VIEW_ID: ${{ secrets.ZOHO_VIEW_ID }}
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          CREATIVES_DASHBOARD_DRIVE_FOLDER_ID: ${{ secrets.CREATIVES_DASHBOARD_DRIVE_FOLDER_ID }}
+        run: python3 zoho_salary_export.py
