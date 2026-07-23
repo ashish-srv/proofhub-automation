@@ -55,6 +55,8 @@ for _, quotation in data.iterrows():
         sub = item.get("subDept", "")
         fmt = item.get("creativeFormat", "")
         creatives = item.get("noOfCreatives")
+        est_hours = item.get("billingTotalHrs")
+        est_cost = item.get("billingFinalCost")
         # ----------------------------------------------------
         # BRAND COMMUNICATION (COPY)
         # ----------------------------------------------------
@@ -68,6 +70,8 @@ for _, quotation in data.iterrows():
             record["Sub Department"] = sub
             record["Format"] = fmt
             record["Creatives"] = creatives
+            record["Estimated Hours"] = est_hours
+            record["Estimated Cost"] = est_cost
             output.append(record)
         # ----------------------------------------------------
         # DESIGNING
@@ -82,6 +86,8 @@ for _, quotation in data.iterrows():
             record["Sub Department"] = sub
             record["Format"] = fmt
             record["Creatives"] = creatives
+            record["Estimated Hours"] = est_hours
+            record["Estimated Cost"] = est_cost
             output.append(record)
 # ============================================================
 # Export
