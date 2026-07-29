@@ -3,7 +3,7 @@ name: ProofHub Daily Automation
 on:
   schedule:
     
-    - cron: "0 6 * * *"
+    - cron: "30 0 * * *"
   workflow_dispatch:
 
 jobs:
