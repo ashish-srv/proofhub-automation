@@ -139,7 +139,7 @@ CLIENT_NAME_MAPPING = {
 'ELTIS SIFIL': 'Symbiosis Institute of Foreign and Indian Languages (SIFIL),',
 'ESMOD Dubai': 'ESMOD Dubai',
 'ESMOD LP': 'ESMOD Dubai',
-'Finar': 'FINAR LIMITED',
+'Finar': 'Actylis',
 'Finnacle Institute': 'FINNACLE INSTITUTE PRIVATE LIMITED',
 'Finnacle Shah': 'FINNACLE INSTITUTE PRIVATE LIMITED',
 'Forbes Marshall': 'FORBES MARSHALL PVT LTD',
