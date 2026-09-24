@@ -165,6 +165,7 @@ CLIENT_NAME_MAPPING = {
 'IIM Kozhikode': 'INDIAN INSTITUTE OF MANAGEMENT KOZHIKODE',
 'IIM Udaipur': 'Indian Institute of Management Udaipur- IIM Udaipur',
 'IIT Kharagpur Law': 'IIT Kharagpur',
+'IITB Monash 2026':'IITB-Monash Research Academy',
 'IMS': 'IMS Unison University',
 'IMS Noida': 'IMS NOIDA',
 'IMS Noida': 'IMS NOIDA',
