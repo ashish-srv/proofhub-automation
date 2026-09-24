@@ -118,6 +118,7 @@ CLIENT_NAME_MAPPING = {
 'Bharti Vidyapeeth': 'BHARATI VIDYAPEETH',
 'Bhawanipur Global Campus': 'Bhawanipur Global Campus',
 'Bhawanipur Global Campus LP': 'Bhawanipur Global Campus',
+'Birbeck University, London':'Birkbeck University',
 'BLOG_SCMHRD_AMC': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'CALMU': 'California Miramar University (CMU)',
 'CGC Jhanjeri': 'Chandigarh Educational Society Jhanjeri',
