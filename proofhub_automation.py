@@ -2,10 +2,11 @@
 import requests
 import pandas as pd
 import time
-from datetime import datetime
 import ast
 import os
+import sys
 import json
+from collections import deque
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
@@ -13,10 +14,18 @@ from googleapiclient.errors import HttpError
 
 # ================= CONFIGURATION =================
 COMPANY_NAME = "srvmedia"
-API_KEY = os.getenv('PROOFHUB_API_KEY', '0457cfd434cf86cd71d23177ee4ed41fd442527c')
+API_KEY = os.getenv('PROOFHUB_API_KEY')   # no hardcoded fallback - set the env var / GitHub secret
+DATE_FROM = '2025-01-01'                   # entries before this date are dropped (intentional)
+
+# ProofHub limit: 25 requests per 10 seconds per account + IP.
+# We stay at 20 so other tools on the same account (n8n, timesheet filler, etc.) don't push us over.
+RATE_LIMIT_REQUESTS = 20
+RATE_LIMIT_WINDOW = 10.0
+MAX_RETRIES = 8
+REQUEST_TIMEOUT = 60
 
 headers = {
-    "X-API-KEY": API_KEY,
+    "X-API-KEY": API_KEY or "",
     "User-Agent": "ZohoIntegration (ashish.kate@srvmedia.com)",
     "Accept": "application/json"
 }
@@ -25,14 +34,12 @@ base_url = f"https://{COMPANY_NAME}.proofhub.com/api/v3"
 
 # ================= CLIENT NAME MAPPING =================
 CLIENT_NAME_MAPPING = {
-    '#6791: scmhrd.edu files': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
+'#6791: scmhrd.edu files': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 '#7055: Fwd: Eligibility of SCOP || Bachelors of Physiotherapy (BPT)': 'Symbiosis College of Physiotherapy (SCOP)',
 '#7093: Update Blog - SRV Media': 'SRV',
 '#7115: Website Updation || scmhrd.edu': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
-'#7115: Website Updation || scmhrd.edu': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 '#7125: Update Blog - SRV Media': 'SRV',
 '#7159:  Update of Committee & SIG Member Photographs on Website': 'SIG - Symbiosis Institute  of Geo Informatics',
-'#7159: Update of Committee & SIG Member Photographs on Website': 'SIG - Symbiosis Institute  of Geo Informatics',
 '#7159: Update of Committee & SIG Member Photographs on Website': 'SIG - Symbiosis Institute  of Geo Informatics',
 '#7203: Change Blog Publication Date - SRV': 'SRV',
 '#7204: Update Blog - SRV Media': 'SRV',
@@ -46,15 +53,12 @@ CLIENT_NAME_MAPPING = {
 '#7349:  Update Blog - SRV Media': 'SRV',
 '#7373: Home Page Redirection - SCMHRD': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 '#7405: Actylis Lab Solutions | Issue with LinkedIn Preview for Published Blog': 'Actylis',
-'#7405: Actylis Lab Solutions | Issue with LinkedIn Preview for Published Blog': 'Actylis',
-'#7405: Actylis Lab Solutions | Issue with LinkedIn Preview for Published Blog': 'Actylis',
 '#7443: Urgent Pending Updates for Committees and SIGs Section Website Pages': 'SIG - Symbiosis Institute  of Geo Informatics',
 'Actylis - Pulse': 'Actylis',
 'Actylislab (Finar Website) AMC': 'Actylis',
 'Admission Fair': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
 'Admissions Fair': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
 'Admissions Fair 2026': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
-'Afairs': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
 'Afairs': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
 'Afairs - MBA Expo': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
 'Afairs 2024': 'AFAIRS EXHIBITIONS & MEDIA PRIVATE LIMITED',
@@ -107,10 +111,8 @@ CLIENT_NAME_MAPPING = {
 'ASBM - PR Mandate (2025 -26)': 'ASBM University',
 'ASBM LP': 'ASBM University',
 'AURAK': 'AURAK',
-'AURAK': 'AURAK',
 'Auro University': 'Auro University',
 'Babu Bansari Das Uni': 'BABU BANARASI DAS UNIVERSITY',
-'Bangkok University': 'BANGKOK UNIVERSITY',
 'Bangkok University': 'BANGKOK UNIVERSITY',
 'Bank Of Maharashtra': 'Bank of Maharashtra',
 'BBDU': 'BABU BANARASI DAS UNIVERSITY',
@@ -118,11 +120,10 @@ CLIENT_NAME_MAPPING = {
 'Bharti Vidyapeeth': 'BHARATI VIDYAPEETH',
 'Bhawanipur Global Campus': 'Bhawanipur Global Campus',
 'Bhawanipur Global Campus LP': 'Bhawanipur Global Campus',
-'Birbeck University, London':'Birkbeck University',
+'Birbeck University, London': 'Birkbeck University',
 'BLOG_SCMHRD_AMC': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'CALMU': 'California Miramar University (CMU)',
 'CGC Jhanjeri': 'Chandigarh Educational Society Jhanjeri',
-'CGC Landran': 'CGC,Landran - Chandigarh Group  of Colleges',
 'CGC Landran': 'CGC,Landran - Chandigarh Group  of Colleges',
 'Chanakya University': 'THE CHANAKYA UNIVERSITY',
 'chanakya university': 'THE CHANAKYA UNIVERSITY',
@@ -145,7 +146,6 @@ CLIENT_NAME_MAPPING = {
 'Finnacle Shah': 'FINNACLE INSTITUTE PRIVATE LIMITED',
 'Forbes Marshall': 'FORBES MARSHALL PVT LTD',
 'Galgotia University': 'Galgotias University',
-'Galgotia University': 'Galgotias University',
 'GD Goenka': 'GD Goenka',
 'GD Goenka Healthcare Franchise 2026-26': 'GD Goenka',
 'GD Goenka High School 2026-27': 'GD Goenka',
@@ -155,8 +155,6 @@ CLIENT_NAME_MAPPING = {
 'Geta': 'GETA AI LABS PRIVATE LIMITED',
 'Geta MSG': 'GETA AI LABS PRIVATE LIMITED',
 'GRD IMT': 'GRD Institute of Management & Technology',
-'GRD IMT': 'GRD Institute of Management & Technology',
-'HITAM': 'Hyderabad Institute of Technology and Management-HITAM',
 'HITAM': 'Hyderabad Institute of Technology and Management-HITAM',
 'Hyundai SM': 'HD HYUNDAI CONSTRUCTION EQUIPMENT INDIA PRIVATE LIMITED',
 'IEM': 'INSTITUTE OF ENGINEERING AND MANAGEMENT TRUST',
@@ -166,9 +164,8 @@ CLIENT_NAME_MAPPING = {
 'IIM Kozhikode': 'INDIAN INSTITUTE OF MANAGEMENT KOZHIKODE',
 'IIM Udaipur': 'Indian Institute of Management Udaipur- IIM Udaipur',
 'IIT Kharagpur Law': 'IIT Kharagpur',
-'IITB Monash 2026':'IITB-Monash Research Academy',
+'IITB Monash 2026': 'IITB-Monash Research Academy',
 'IMS': 'IMS Unison University',
-'IMS Noida': 'IMS NOIDA',
 'IMS Noida': 'IMS NOIDA',
 'IMS Social Media': 'IMS Unison University',
 'IMS Unison 2026-2027': 'IMS Unison University',
@@ -211,14 +208,13 @@ CLIENT_NAME_MAPPING = {
 'NIF Mumbai': 'NIF',
 'NIFD Kothrud': 'NIF',
 'NIFD Mumbai': 'NIF',
-    'Nirma MBA &amp; MBA HRM': 'NIRMA',
+'Nirma MBA &amp; MBA HRM': 'NIRMA',
 'Nirma MBA & MBA HRM': 'NIRMA',
 'Nirma MBA SM': 'NIRMA',
 'Nirma MBA Social Media': 'NIRMA',
 'Nirma University': 'NIRMA',
 'Nitte Hospital': 'Nitte Hospital',
 'NITTE SM': 'NITTE University',
-'Nitte University': 'NITTE University',
 'Nitte University': 'NITTE University',
 'NL Dalmia University': 'N. L. Dalmia Institute of Management Studies and Research',
 'Orbit group': 'ORBIT',
@@ -235,7 +231,6 @@ CLIENT_NAME_MAPPING = {
 'PCET - 2026': 'PCET International',
 'PCET International': 'PCET International',
 'PCU': 'Pimpri Chinchwad University',
-'PCU': 'Pimpri Chinchwad University',
 'PCU - 2026': 'Pimpri Chinchwad University',
 'PDEU': 'PANDIT DEENDAYAL ENERGY UNIVERSITY',
 'PDEU Brand': 'PANDIT DEENDAYAL ENERGY UNIVERSITY',
@@ -248,9 +243,7 @@ CLIENT_NAME_MAPPING = {
 'QMUL Academics Promotions': 'Queen Mary University of London',
 'Queen Mary University - London': 'Queen Mary University of London',
 'RV University': 'RV UNIVERSITY',
-'RV University': 'RV UNIVERSITY',
 'SAI Sudha Lawn': 'Parul Sai Sudha Lawns',
-'SAII': 'Symbiosis Artificial Intelligence Institute (SAII)',
 'SAII': 'Symbiosis Artificial Intelligence Institute (SAII)',
 'SAII Website': 'Symbiosis Artificial Intelligence Institute (SAII)',
 'SBUP - DDSS': 'Sri Balaji University, Pune',
@@ -259,19 +252,17 @@ CLIENT_NAME_MAPPING = {
 'SBUP PhD 2025': 'Sri Balaji University, Pune',
 'SBUP UG PG 2025': 'Sri Balaji University, Pune',
 'SCAC': 'SCAC- Principal Symbiosis College of Arts and Commerce',
-'SCAC': 'SCAC- Principal Symbiosis College of Arts and Commerce',
 'SCIT': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT 2023-24': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT 2024': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT 2025': 'SCIT - Symbiosis Center  for Information Technology',
 'SCIT Pune': 'SCIT - Symbiosis Center  for Information Technology',
- 'SCMC 2025': 'SCMC - Symbiosis Centre for Media & Communication',   
+'SCMC 2025': 'SCMC - Symbiosis Centre for Media & Communication',
 'SCMC AY 2025': 'SCMC - Symbiosis Centre for Media & Communication',
 'SCMHRD': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD 2024': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD 2026': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
 'SCMHRD Executive MBA': 'SCMHRD - Symbiosis Center for Management & Human Resource Development',
-    
 'SCMS Bengaluru': 'Symbiosis Centre for Management Studies-SCMS Bengaluru',
 'SCMS Hyd 2025': 'SCMS HYD - Symbiosis Center for Management Studies - Hyderabad',
 'SCMS Hyderabad': 'SCMS HYD - Symbiosis Center for Management Studies - Hyderabad',
@@ -292,11 +283,9 @@ CLIENT_NAME_MAPPING = {
 'SIBM Hyd AY 2025': 'SIBM HYD - Symbiosis Institute of Business Management - Hyd',
 'SIBM Hyderabad': 'SIBM HYD - Symbiosis Institute of Business Management - Hyd',
 'SIBM Nagpur': 'SIBM -Symbiosis Institute of Business Management Nagpur',
-'SIBM Nagpur': 'SIBM -Symbiosis Institute of Business Management Nagpur',
 'SIBM Nagpur AY 2025': 'SIBM -Symbiosis Institute of Business Management Nagpur',
 'SIBM Nagpur-Mobile': 'SIBM -Symbiosis Institute of Business Management Nagpur',
 'SIBM NOIDA 2026': 'SIBM Noida - Symbiosis Institute of Business Management Noida',
-'SIBM Pune': 'SIBM - Symbiosis Institute of Business Management - Pune',
 'SIBM Pune': 'SIBM - Symbiosis Institute of Business Management - Pune',
 'SIBM PUNE 2025': 'SIBM - Symbiosis Institute of Business Management - Pune',
 'SICSR': 'SICSR - Symbiosis Institute of  Computer Studies & Research',
@@ -314,16 +303,13 @@ CLIENT_NAME_MAPPING = {
 'SIIB 2026': 'SIIB - Symbiosis Institute of International Business',
 'SIMC AY 2025': 'SIMC - Symbiosis Institute of Media & Communication',
 'SIOM': 'SIOM - Symbiosis Institute  of Operation Management',
-    'SITEEE SM 2025':'Symbiosis Institute of Technology Engineering Entrance Examination',
+'SITEEE SM 2025': 'Symbiosis Institute of Technology Engineering Entrance Examination',
 'SIT Hyd 2026': 'SIT Hyderabad- Symbiosis Institute of Technology',
 'SIT Hyderabad': 'SIT Hyderabad- Symbiosis Institute of Technology',
-'SIT Hyderabad': 'SIT Hyderabad- Symbiosis Institute of Technology',
-'SIT Nagpur 2025': 'SIT Nagpur-Symbiosis Institute of Technology',
 'SIT Nagpur 2025': 'SIT Nagpur-Symbiosis Institute of Technology',
 'SIT Pune 2024': 'SIT - Symbiosis Institute of Technology Pune',
 'SIT Pune 2025': 'SIT - Symbiosis Institute of Technology Pune',
 'SIT Pune 2026': 'SIT - Symbiosis Institute of Technology Pune',
-'SLAT': 'SLAT',
 'SLAT': 'SLAT',
 'SLAT 2024': 'SLAT',
 'SLAT SM 2025': 'SLAT',
@@ -332,14 +318,10 @@ CLIENT_NAME_MAPPING = {
 'SLS Hyderabad AMC': 'SLS Hyderabad - Symbiosis Law School Hyderabad',
 'SLS Nagpur 2025': 'SLS Nagpur - Symbiosis Law School Nagpur',
 'SLS Pune': 'SLS Pune - Symbiosis Law  School - Pune',
-'SLS Pune': 'SLS Pune - Symbiosis Law  School - Pune',
-'SLS Pune': 'SLS Pune - Symbiosis Law  School - Pune',
-'SLS Pune': 'SLS Pune - Symbiosis Law  School - Pune',
 'SNAP': 'SNAP',
 'SNAP 2025': 'SNAP',
 'SNAP SM 2024': 'SNAP',
 'SNAP SM 2025': 'SNAP',
-'Somaiya Vidyavihar University (SVU)': 'Somaiya Vidyavihar University',
 'Somaiya Vidyavihar University (SVU)': 'Somaiya Vidyavihar University',
 'SPJIMR': 'SPJIMR-S. P. Jain Institute of Management and Research',
 'SPJIMR PGPM': 'SPJIMR-S. P. Jain Institute of Management and Research',
@@ -367,7 +349,6 @@ CLIENT_NAME_MAPPING = {
 'SSVAP 2026': 'SSVAP - Symbiosis School of  Visual Arts And Photography',
 'Study From India': 'Study From India',
 'Study from India': 'Study From India',
-'Study from UAE': 'Study from UAE',
 'Study from UAE': 'Study from UAE',
 'Study From UAE SM': 'Study from UAE',
 'Symbiosis International School': 'Symbiosis International School (SIS)',
@@ -412,6 +393,7 @@ CLIENT_NAME_MAPPING = {
 'XLRI XOL': 'XAT',
 }
 
+
 def get_client_name(project_name):
     """Get client name from project name using mapping"""
     if pd.isna(project_name) or project_name == '':
@@ -424,6 +406,7 @@ def get_client_name(project_name):
             return value
     return ''
 
+
 # ================= GOOGLE DRIVE UPLOAD =================
 def upload_to_google_drive(file_path, folder_id):
     """Upload file to Google Drive Shared Drive"""
@@ -431,30 +414,30 @@ def upload_to_google_drive(file_path, folder_id):
         print(f"📤 Starting Google Drive upload to Shared Drive...")
         print(f"   File: {file_path} ({os.path.getsize(file_path) / 1024:.1f} KB)")
         print(f"   Target Shared Drive Folder ID: {folder_id}")
-        
+
         if not os.path.exists(file_path):
             print("❌ CSV file not found!")
             return False
-        
+
         service_account_json = os.environ.get('GOOGLE_SERVICE_ACCOUNT_KEY')
         if not service_account_json:
             print("❌ GOOGLE_SERVICE_ACCOUNT_KEY is missing!")
             return False
-        
+
         try:
             service_account_info = json.loads(service_account_json)
             print(f"✅ Service Account: {service_account_info.get('client_email')}")
         except json.JSONDecodeError as e:
             print(f"❌ JSON error: {e}")
             return False
-        
+
         credentials = service_account.Credentials.from_service_account_info(
             service_account_info,
             scopes=['https://www.googleapis.com/auth/drive']
         )
-        
+
         service = build('drive', 'v3', credentials=credentials, cache_discovery=False)
-        
+
         print(f"🔍 Testing access to Shared Drive folder...")
         try:
             folder_info = service.files().get(
@@ -471,18 +454,18 @@ def upload_to_google_drive(file_path, folder_id):
             print("   2. Service account has 'Content manager' or 'Editor' role")
             print("   3. Folder ID is correct")
             return False
-        
+
         file_metadata = {
             'name': 'All Projects Timesheet.csv',
             'parents': [folder_id]
         }
-        
+
         media = MediaFileUpload(
             file_path,
             mimetype='text/csv',
             resumable=True
         )
-        
+
         print(f"🔍 Searching for existing file...")
         response = service.files().list(
             q=f"name='All Projects Timesheet.csv' and '{folder_id}' in parents and trashed=false",
@@ -491,7 +474,7 @@ def upload_to_google_drive(file_path, folder_id):
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
         ).execute()
-        
+
         if response.get('files'):
             file_id = response['files'][0]['id']
             print(f"🔄 Updating existing file (ID: {file_id})")
@@ -510,23 +493,23 @@ def upload_to_google_drive(file_path, folder_id):
                 supportsAllDrives=True
             ).execute()
             print(f"✅ Created new file in Shared Drive: {file.get('id')}")
-        
+
         file_link = f"https://drive.google.com/drive/folders/{folder_id}"
         print(f"📎 File accessible at: {file_link}")
-        
+
         return True
-        
+
     except HttpError as error:
         error_details = json.loads(error.content.decode('utf-8'))
         error_msg = error_details.get('error', {}).get('message', str(error))
         print(f'❌ Google Drive API error: {error_msg}')
-        
+
         if 'storageQuotaExceeded' in str(error):
             print("💡 Still getting quota error? Try:")
             print("   1. Double-check folder is in SHARED DRIVE (not My Drive)")
             print("   2. Service account email added to Shared Drive members")
             print("   3. Service account has 'Content manager' permission")
-        
+
         return False
     except Exception as e:
         print(f'❌ Unexpected error: {type(e).__name__}: {e}')
@@ -535,359 +518,378 @@ def upload_to_google_drive(file_path, folder_id):
         return False
 
 
-# ================= DOWNLOAD FUNCTION =================
-def download_all_data(endpoint, data_key=None, max_pages=3):
-    """Download all data from an endpoint with duplicate detection"""
-    all_data = []
-    page = 1
-    seen_ids = set()
-    
-    while page <= max_pages:
-        url = f"{base_url}/{endpoint}?page={page}"
+# ================= PROOFHUB API (rate limit + retry) =================
+_request_times = deque()
+
+
+def _wait_for_slot():
+    """Sliding-window limiter: never more than RATE_LIMIT_REQUESTS in any RATE_LIMIT_WINDOW seconds."""
+    while True:
+        now = time.monotonic()
+        while _request_times and now - _request_times[0] >= RATE_LIMIT_WINDOW:
+            _request_times.popleft()
+        if len(_request_times) < RATE_LIMIT_REQUESTS:
+            _request_times.append(now)
+            return
+        time.sleep(RATE_LIMIT_WINDOW - (now - _request_times[0]) + 0.05)
+
+
+def api_get(endpoint, params=None):
+    """
+    GET a ProofHub endpoint. Retries 429 (honouring Retry-After), 5xx and network errors.
+    Returns (data, None) on success, (None, error_text) on failure. Never fails silently.
+    """
+    url = f"{base_url}/{endpoint}"
+    last_error = ''
+    for attempt in range(1, MAX_RETRIES + 1):
+        _wait_for_slot()
         try:
-            response = requests.get(url, headers=headers, timeout=30)
-            if response.status_code == 200:
-                data = response.json()
-                items = []
-                if isinstance(data, list):
-                    items = data
-                elif isinstance(data, dict):
-                    if data_key and data_key in data:
-                        items = data[data_key]
-                    else:
-                        for key in [endpoint, 'data', 'items', 'results']:
-                            if key in data and isinstance(data[key], list):
-                                items = data[key]
-                                break
-                if not items:
-                    break
-                new_items = []
-                duplicate_count = 0
-                for item in items:
-                    item_id = None
-                    if isinstance(item, dict):
-                        if 'id' in item:
-                            item_id = item['id']
-                        elif 'ID' in item:
-                            item_id = item['ID']
-                    if item_id is None:
-                        new_items.append(item)
-                    elif item_id not in seen_ids:
-                        seen_ids.add(item_id)
-                        new_items.append(item)
-                    else:
-                        duplicate_count += 1
-                if new_items:
-                    all_data.extend(new_items)
-                    if duplicate_count > len(new_items) * 0.5:
-                        break
-                else:
-                    break
-                if len(items) < 50:
-                    break
-                page += 1
-                time.sleep(0.5)
-            elif response.status_code == 429:
-                time.sleep(30)
+            r = requests.get(url, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
+        except requests.RequestException as e:
+            last_error = f"network error {type(e).__name__}: {e}"
+            wait = min(5 * attempt, 60)
+            print(f"   ⚠️  {endpoint} {params or ''} → {last_error} | retry {attempt}/{MAX_RETRIES} in {wait}s")
+            time.sleep(wait)
+            continue
+
+        if r.status_code == 200:
+            try:
+                return r.json(), None
+            except ValueError:
+                last_error = f"HTTP 200 but invalid JSON: {r.text[:200]}"
+                wait = min(5 * attempt, 60)
+                print(f"   ⚠️  {endpoint} {params or ''} → {last_error} | retry {attempt}/{MAX_RETRIES} in {wait}s")
+                time.sleep(wait)
                 continue
-            else:
-                print(f"❌ API error on {endpoint} page {page}: HTTP {response.status_code} → {response.text[:200]}")
-                break
-        except Exception as e:
+
+        if r.status_code == 429:
+            try:
+                wait = max(int(float(r.headers.get('Retry-After', 15))), 1)
+            except ValueError:
+                wait = 15
+            last_error = "HTTP 429 rate limited"
+            print(f"   ⏳ {endpoint} {params or ''} → 429, waiting {wait}s (retry {attempt}/{MAX_RETRIES})")
+            time.sleep(wait)
+            continue
+
+        if r.status_code >= 500:
+            last_error = f"HTTP {r.status_code}: {r.text[:200]}"
+            wait = min(10 * attempt, 120)
+            print(f"   ⚠️  {endpoint} {params or ''} → {last_error} | retry {attempt}/{MAX_RETRIES} in {wait}s")
+            time.sleep(wait)
+            continue
+
+        # Other 4xx: retrying won't help
+        return None, f"HTTP {r.status_code}: {r.text[:200]}"
+
+    return None, f"gave up after {MAX_RETRIES} retries ({last_error})"
+
+
+def extract_list(data, keys):
+    """Pull the list of records out of a response. Returns None if the shape is unexpected."""
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict):
+        for k in keys:
+            if isinstance(data.get(k), list):
+                return data[k]
+    return None
+
+
+def fetch_list(endpoint, keys, params=None, max_pages=1000):
+    """
+    Page through an endpoint until a page is empty or brings nothing new
+    (projects/people/timesheets ignore ?page and resend the same list; time entries
+    really paginate, 500 per page). Returns (items, error). On error, items holds
+    whatever was fetched before the failure.
+    """
+    all_items, seen = [], set()
+    page = 1
+    while page <= max_pages:
+        p = {'page': page}
+        if params:
+            p.update(params)
+        data, err = api_get(endpoint, p)
+        if err:
+            return all_items, f"page {page}: {err}"
+
+        items = extract_list(data, keys)
+        if items is None:
+            shape = list(data.keys())[:10] if isinstance(data, dict) else type(data).__name__
+            return all_items, f"page {page}: unexpected response shape {shape}"
+        if not items:
             break
-    return pd.DataFrame(all_data) if all_data else pd.DataFrame()
+
+        new, has_ids = [], False
+        for it in items:
+            item_id = it.get('id') if isinstance(it, dict) else None
+            if item_id is None:
+                new.append(it)
+                continue
+            has_ids = True
+            if str(item_id) not in seen:
+                seen.add(str(item_id))
+                new.append(it)
+
+        if has_ids and not any(isinstance(it, dict) and it.get('id') is not None for it in new):
+            break  # page repeated what we already have
+        all_items.extend(new)
+        if not has_ids:
+            break  # can't detect repeats without IDs, so don't risk looping
+        page += 1
+
+    return all_items, None
+
 
 def extract_id_from_field(field_value):
     """Extract ID from field that might be dict/JSON string"""
-    if pd.isna(field_value):
+    if field_value is None:
         return None
     try:
+        if isinstance(field_value, dict):
+            return str(field_value['id']) if field_value.get('id') is not None else None
+        if pd.isna(field_value):
+            return None
         if isinstance(field_value, str) and field_value.strip().startswith('{'):
             field_dict = ast.literal_eval(field_value.strip())
-            if isinstance(field_dict, dict) and 'id' in field_dict:
+            if isinstance(field_dict, dict) and field_dict.get('id') is not None:
                 return str(field_dict['id'])
-        elif isinstance(field_value, dict) and 'id' in field_value:
-            return str(field_value['id'])
-    except:
+    except Exception:
         pass
     return None
+
+
+def fetch_reference(endpoint, keys, params=None, label=None):
+    """Reference data must be complete, otherwise the whole output is wrong - stop the run."""
+    label = label or endpoint
+    items, err = fetch_list(endpoint, keys, params)
+    if err:
+        print(f"❌ Could not fetch {label}: {err}")
+        print("   Stopping without overwriting the existing file in Drive.")
+        sys.exit(1)
+    print(f"   ✅ {label}: {len(items)}")
+    return items
+
 
 # ================= MAIN FUNCTION =================
 def main():
     print("🚀 STARTING PROOFHUB AUTOMATION")
     print("=" * 70)
-    
-    # Download reference data
-    print("📥 Downloading people data...")
-    people_df = download_all_data("people", "people", max_pages=1)
 
-    # --- CHANGE 1: also capture email alongside Full_Name ---
-    if 'first_name' in people_df.columns and 'last_name' in people_df.columns:
-        people_df['Full_Name'] = people_df.apply(
-            lambda row: f"{str(row.get('first_name', '')).strip()} {str(row.get('last_name', '')).strip()}".strip(),
-            axis=1
-        )
-        people_df['Full_Name'] = people_df['Full_Name'].replace('', pd.NA)
-        people_df['Full_Name'] = people_df['Full_Name'].fillna(people_df.get('name', ''))
+    if not API_KEY:
+        print("❌ PROOFHUB_API_KEY environment variable is not set")
+        sys.exit(1)
 
-    if 'email' not in people_df.columns:
-        people_df['email'] = ''
-    
-    print("📥 Downloading roles data...")
-    roles_df = download_all_data("roles", "roles", max_pages=1)
-    role_mapping = {}
-    if 'id' in roles_df.columns and 'name' in roles_df.columns:
-        for _, row in roles_df.iterrows():
-            role_mapping[str(row['id'])] = row.get('name', '')
-    
-    print("📥 Downloading categories data...")
-    categories_df = download_all_data("categories", "categories", max_pages=1)
-    category_mapping = {}
-    if 'id' in categories_df.columns and 'name' in categories_df.columns:
-        for _, row in categories_df.iterrows():
-            category_mapping[str(row['id'])] = row.get('name', '')
-    
-    print("📥 Downloading projects data...")
-    projects_df = download_all_data("projects", "projects", max_pages=3)
-    
-    # Prepare project info
-    project_info_dict = {}
-    for _, row in projects_df.iterrows():
-        project_id = row.get('id')
-        if pd.notna(project_id):
-            project_id_str = str(project_id)
-            project_name = row.get('title', row.get('name', f'Project_{project_id}'))
-            category_id = None
-            if 'category' in row and pd.notna(row['category']):
-                category_id = extract_id_from_field(row['category'])
-            category_name = category_mapping.get(category_id, '') if category_id else ''
-            start_date = row.get('start_date', '')
-            end_date = row.get('end_date', '')
-            if pd.notna(start_date):
-                start_date = str(start_date).split('T')[0]
-            else:
-                start_date = ''
-            if pd.notna(end_date):
-                end_date = str(end_date).split('T')[0]
-            else:
-                end_date = ''
-            
-            project_info_dict[project_id_str] = {
-                'name': project_name,
-                'category_name': category_name,
-                'start_date': start_date,
-                'end_date': end_date,
-                'client_name': get_client_name(project_name)
-            }
-    
-    # Prepare people role mapping
-    people_role_mapping = {}
-    if 'id' in people_df.columns and 'role' in people_df.columns:
-        for _, row in people_df.iterrows():
-            person_id = row['id']
-            role_field = row.get('role', '')
-            role_id = extract_id_from_field(role_field)
-            if role_id:
-                people_role_mapping[person_id] = role_mapping.get(role_id, '')
+    failures = []
 
-    # --- CHANGE 2: return email from get_employee_info ---
-    def get_employee_info(creator_id):
-        if pd.isna(creator_id):
-            return '', '', ''
-        person = people_df[people_df['id'] == creator_id]
-        if not person.empty:
-            full_name = person.iloc[0].get('Full_Name', '') or person.iloc[0].get('name', '')
-            role = people_role_mapping.get(creator_id, '')
-            email = person.iloc[0].get('email', '')
-            return full_name, role, email
-        return '', '', ''
-    
-    def get_project_details(project_id):
-        project_id_str = str(project_id)
-        if project_id_str in project_info_dict:
-            return project_info_dict[project_id_str]
-        return {
-            'name': f'Project_{project_id}',
-            'category_name': '',
-            'start_date': '',
-            'end_date': '',
-            'client_name': ''
+    # ---------- Reference data ----------
+    print("📥 Downloading reference data...")
+    people = fetch_reference("people", ["people", "data", "items", "users"], label="people")
+    roles = fetch_reference("roles", ["roles", "data", "items"], label="roles")
+    categories = fetch_reference("categories", ["categories", "data", "items"], label="categories")
+    active_projects = fetch_reference("projects", ["projects", "data", "items"], label="projects (active)")
+    archived_projects = fetch_reference("projects", ["projects", "data", "items"],
+                                        params={"archived": "true"}, label="projects (archived)")
+
+    role_mapping = {str(r['id']): r.get('name', '') for r in roles if isinstance(r, dict) and r.get('id') is not None}
+    category_mapping = {str(c['id']): c.get('name', '') for c in categories if isinstance(c, dict) and c.get('id') is not None}
+
+    people_by_id = {}
+    for p in people:
+        if not isinstance(p, dict) or p.get('id') is None:
+            continue
+        full_name = f"{str(p.get('first_name') or '').strip()} {str(p.get('last_name') or '').strip()}".strip()
+        role_id = extract_id_from_field(p.get('role'))
+        people_by_id[str(p['id'])] = {
+            'name': full_name or p.get('name', '') or '',
+            'role': role_mapping.get(role_id, '') if role_id else '',
+            'email': p.get('email', '') or '',
         }
-    
-    # ================= FETCH TIME ENTRIES =================
+
+    def get_employee_info(creator_id):
+        person = people_by_id.get(str(creator_id))
+        if person:
+            return person['name'], person['role'], person['email']
+        return '', '', ''
+
+    # Merge active + archived projects (archived ones were never fetched before)
+    projects = {}
+    for p in active_projects + archived_projects:
+        if isinstance(p, dict) and p.get('id') is not None and str(p['id']) not in projects:
+            projects[str(p['id'])] = p
+    print(f"   📦 Total unique projects: {len(projects)}")
+
+    project_info_dict = {}
+    for project_id_str, row in projects.items():
+        project_name = row.get('title') or row.get('name') or f'Project_{project_id_str}'
+        category_id = extract_id_from_field(row.get('category'))
+        start_date = str(row.get('start_date') or '').split('T')[0]
+        end_date = str(row.get('end_date') or '').split('T')[0]
+        project_info_dict[project_id_str] = {
+            'name': project_name,
+            'category_name': category_mapping.get(category_id, '') if category_id else '',
+            'start_date': start_date,
+            'end_date': end_date,
+            'client_name': get_client_name(project_name),
+        }
+
+    # ---------- Time entries ----------
     print("\n⏱️  Fetching timesheets and time entries...")
-    all_projects = projects_df.to_dict('records')
-    print(f"📦 Total projects fetched: {len(all_projects)}")
     all_time_entries = []
-    request_count = 0
-    
-    for i, project in enumerate(all_projects):
+    total = len(projects)
+
+    for i, (project_id_str, project) in enumerate(projects.items(), start=1):
         project_id = project['id']
-        project_details = get_project_details(project_id)
-        
-        if request_count >= 20:
-            time.sleep(10)
-            request_count = 0
-        
-        timesheets_url = f"{base_url}/projects/{project_id}/timesheets"
-        timesheets_response = requests.get(timesheets_url, headers=headers)
-        request_count += 1
-        
-        if timesheets_response.status_code == 200:
-            timesheets_data = timesheets_response.json()
-            timesheets = []
-            if isinstance(timesheets_data, list):
-                timesheets = timesheets_data
-            elif isinstance(timesheets_data, dict):
-                for key in ['timesheets', 'data', 'items']:
-                    if key in timesheets_data and isinstance(timesheets_data[key], list):
-                        timesheets = timesheets_data[key]
-                        break
-                # ADD THIS LINE HERE ↓
-                print(f"  [{i+1}/{len(all_projects)}] Project {project_id} → HTTP {timesheets_response.status_code} → {len(timesheets)} timesheets")
-            
-            for ts in timesheets:
-                timesheet_id = ts.get('id')
-                if timesheet_id:
-                    page = 1
-                    while True:
-                        if request_count >= 20:
-                            time.sleep(10)
-                            request_count = 0
-                        
-                        entries_url = f"{base_url}/projects/{project_id}/timesheets/{timesheet_id}/time?page={page}"
-                        entries_response = requests.get(entries_url, headers=headers)
-                        request_count += 1
-                        
-                        if entries_response.status_code == 200:
-                            entries_data = entries_response.json()
-                            entries = entries_data if isinstance(entries_data, list) else entries_data.get('time_entries', [])
-                            
-                            if not entries:
-                                break
-                            
-                            for entry in entries:
-                                entry_date = entry.get('date', '')
-                                if entry_date and entry_date >= '2025-01-01':
-                                    creator_id = None
-                                    employee_name = ''
-                                    emp_role = ''
-                                    emp_email = ''  # --- CHANGE 3: initialise email ---
+        details = project_info_dict[project_id_str]
+        label = f"  [{i}/{total}] {project_id} '{details['name']}'"
 
-                                    if 'creator' in entry and isinstance(entry['creator'], dict):
-                                        creator_id = entry['creator'].get('id', '')
-                                        if creator_id:
-                                            # --- CHANGE 4: unpack email from get_employee_info ---
-                                            employee_name, emp_role, emp_email = get_employee_info(creator_id)
-                                    
-                                    entry['creator_id'] = creator_id
-                                    entry['employee_name'] = employee_name
-                                    entry['emp_role'] = emp_role
-                                    entry['Email Address'] = emp_email  # --- CHANGE 5: store email in entry ---
-                                    entry['project_id'] = project_id
-                                    entry['project_name'] = project_details['name']
-                                    entry['category_name'] = project_details['category_name']
-                                    entry['project_start_date'] = project_details['start_date']
-                                    entry['project_end_date'] = project_details['end_date']
-                                    entry['client_name'] = project_details['client_name']
-                                    entry['timesheet_id'] = timesheet_id
-                                    entry['timesheet_title'] = ts.get('title', '')
-                                    
-                                    all_time_entries.append(entry)
-                            
-                            if len(entries) < 100:
-                                break
-                            page += 1
-                            time.sleep(0.5)
-                        elif entries_response.status_code == 429:
-                            time.sleep(30)
-                            continue
-                        else:
-                            break
-        
-        time.sleep(0.5)
-    
+        timesheets, err = fetch_list(f"projects/{project_id}/timesheets", ["timesheets", "data", "items"])
+        if err:
+            failures.append({'project_id': project_id, 'project_name': details['name'],
+                             'stage': 'timesheets', 'timesheet_id': '', 'error': err})
+            print(f"{label} ❌ timesheets failed: {err}")
+            continue
+
+        project_entries = 0
+        for ts in timesheets:
+            timesheet_id = ts.get('id') if isinstance(ts, dict) else None
+            if not timesheet_id:
+                continue
+
+            entries, err = fetch_list(f"projects/{project_id}/timesheets/{timesheet_id}/time",
+                                      ["time_entries", "time", "data", "items"])
+            if err:
+                failures.append({'project_id': project_id, 'project_name': details['name'],
+                                 'stage': 'time entries', 'timesheet_id': timesheet_id, 'error': err})
+                print(f"{label} ❌ timesheet {timesheet_id} entries failed "
+                      f"(kept {len(entries)} fetched before the error): {err}")
+
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                entry_date = str(entry.get('date') or '')
+                if not entry_date or entry_date < DATE_FROM:
+                    continue
+
+                creator_id = None
+                employee_name, emp_role, emp_email = '', '', ''
+                if isinstance(entry.get('creator'), dict):
+                    creator_id = entry['creator'].get('id', '')
+                    if creator_id:
+                        employee_name, emp_role, emp_email = get_employee_info(creator_id)
+
+                entry['creator_id'] = creator_id
+                entry['employee_name'] = employee_name
+                entry['emp_role'] = emp_role
+                entry['Email Address'] = emp_email
+                entry['project_id'] = project_id
+                entry['project_name'] = details['name']
+                entry['category_name'] = details['category_name']
+                entry['project_start_date'] = details['start_date']
+                entry['project_end_date'] = details['end_date']
+                entry['client_name'] = details['client_name']
+                entry['timesheet_id'] = timesheet_id
+                entry['timesheet_title'] = ts.get('title', '')
+
+                all_time_entries.append(entry)
+                project_entries += 1
+
+        print(f"{label} → {len(timesheets)} timesheets, {project_entries} entries since {DATE_FROM}")
+
     # ================= PROCESS DATA =================
-    if all_time_entries:
-        df = pd.DataFrame(all_time_entries)
-        
-        if 'task' in df.columns:
-            def extract_task_details(task_obj):
-                if isinstance(task_obj, dict):
-                    return {
-                        'task_list_id': task_obj.get('list_id', ''),
-                        'task_list_name': task_obj.get('list_name', ''),
-                        'task_id': task_obj.get('task_id', ''),
-                        'task_name': task_obj.get('task_name', '')
-                    }
-                return {'task_list_id': '', 'task_list_name': '', 'task_id': '', 'task_name': ''}
-            
-            task_details = df['task'].apply(lambda x: pd.Series(extract_task_details(x)))
-            df = pd.concat([df, task_details], axis=1)
-        
-        df['logged_hours'] = pd.to_numeric(df['logged_hours'], errors='coerce').fillna(0)
-        df['logged_mins'] = pd.to_numeric(df['logged_mins'], errors='coerce').fillna(0)
-        df['total_mins'] = (df['logged_hours'] * 60) + df['logged_mins']
-        df['total_hours'] = df['total_mins'] / 60.0
-        df['total_hours'] = df['total_hours'].round(2)
-        
-        date_cols = ['project_start_date', 'project_end_date', 'date']
-        for col in date_cols:
-            if col in df.columns:
-                df[col] = df[col].astype(str)
-                df[col] = df[col].str.split('T').str[0]
-                df[col] = df[col].replace(['nan', 'None', 'NaT', '<NA>'], '')
-        
-        if 'status' in df.columns:
-            df['status'] = df['status'].apply(lambda x: 'billable' if str(x).lower() == 'billed' else str(x))
-        
-        if 'client_name' not in df.columns:
-            df['client_name'] = ''
-        if 'project_name' in df.columns:
-            df['client_name'] = df['project_name'].apply(get_client_name)
-
-        # --- CHANGE 6: added emp_email to final columns ---
-        final_columns = [
-            'creator_id', 'employee_name', 'Email Address', 'emp_role', 'date', 'description',
-            'logged_hours', 'logged_mins', 'total_mins', 'total_hours',
-            'project_id', 'project_name', 'client_name', 'category_name',
-            'project_start_date', 'project_end_date', 'status',
-            'timesheet_id', 'timesheet_title',
-            'task_list_id', 'task_list_name', 'task_id', 'task_name'
-        ]
-        
-        existing_columns = [col for col in final_columns if col in df.columns]
-        final_df = df[existing_columns].copy()
-        
-        output_filename = "All Projects Timesheet.csv"
-        final_df.to_csv(output_filename, index=False, encoding='utf-8')
-        
-        print(f"\n✅ DATA PROCESSING COMPLETE!")
-        print(f"📊 Time entries: {len(final_df)}")
-        print(f"📁 Local file saved: {output_filename}")
-        
-        return output_filename
-    
-    else:
+    if not all_time_entries:
         print("❌ No time entries found")
-        return None
+        return None, failures
+
+    df = pd.DataFrame(all_time_entries)
+
+    if 'task' in df.columns:
+        def extract_task_details(task_obj):
+            if isinstance(task_obj, dict):
+                return {
+                    'task_list_id': task_obj.get('list_id', ''),
+                    'task_list_name': task_obj.get('list_name', ''),
+                    'task_id': task_obj.get('task_id', ''),
+                    'task_name': task_obj.get('task_name', '')
+                }
+            return {'task_list_id': '', 'task_list_name': '', 'task_id': '', 'task_name': ''}
+
+        task_details = df['task'].apply(lambda x: pd.Series(extract_task_details(x)))
+        df = pd.concat([df, task_details], axis=1)
+
+    df['logged_hours'] = pd.to_numeric(df['logged_hours'], errors='coerce').fillna(0)
+    df['logged_mins'] = pd.to_numeric(df['logged_mins'], errors='coerce').fillna(0)
+    df['total_mins'] = (df['logged_hours'] * 60) + df['logged_mins']
+    df['total_hours'] = (df['total_mins'] / 60.0).round(2)
+
+    for col in ['project_start_date', 'project_end_date', 'date']:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.split('T').str[0]
+            df[col] = df[col].replace(['nan', 'None', 'NaT', '<NA>'], '')
+
+    if 'status' in df.columns:
+        df['status'] = df['status'].apply(lambda x: 'billable' if str(x).lower() == 'billed' else str(x))
+
+    if 'project_name' in df.columns:
+        df['client_name'] = df['project_name'].apply(get_client_name)
+    elif 'client_name' not in df.columns:
+        df['client_name'] = ''
+
+    # Same columns as before, so the Zoho import is unaffected
+    final_columns = [
+        'creator_id', 'employee_name', 'Email Address', 'emp_role', 'date', 'description',
+        'logged_hours', 'logged_mins', 'total_mins', 'total_hours',
+        'project_id', 'project_name', 'client_name', 'category_name',
+        'project_start_date', 'project_end_date', 'status',
+        'timesheet_id', 'timesheet_title',
+        'task_list_id', 'task_list_name', 'task_id', 'task_name'
+    ]
+    existing_columns = [col for col in final_columns if col in df.columns]
+    final_df = df[existing_columns].copy()
+
+    output_filename = "All Projects Timesheet.csv"
+    final_df.to_csv(output_filename, index=False, encoding='utf-8')
+
+    print(f"\n✅ DATA PROCESSING COMPLETE!")
+    print(f"📊 Time entries: {len(final_df)}")
+    print(f"📊 Projects with entries: {final_df['project_id'].nunique()}")
+    print(f"📊 Employees with entries: {final_df['creator_id'].nunique()}")
+    unmatched = final_df.loc[final_df['employee_name'].fillna('') == '', 'creator_id'].dropna().unique()
+    if len(unmatched):
+        print(f"⚠️  Creator IDs not found in /people (name/email blank): {list(unmatched)}")
+    print(f"📁 Local file saved: {output_filename}")
+
+    return output_filename, failures
+
 
 if __name__ == "__main__":
-    csv_file = main()
-    
+    csv_file, failures = main()
+    exit_code = 0
+
     if csv_file:
         print("\n📤 UPLOADING TO GOOGLE DRIVE...")
-        
         drive_folder_id = os.getenv('GOOGLE_DRIVE_FOLDER_ID')
-        
         if drive_folder_id:
-            success = upload_to_google_drive(csv_file, drive_folder_id)
-            if success:
+            if upload_to_google_drive(csv_file, drive_folder_id):
                 print("✅ File successfully uploaded to Google Drive!")
-                print(f"📁 Path: My Drive/Zoho Analytics/ProofHub/All Projects Timesheet.csv")
             else:
                 print("❌ Failed to upload to Google Drive")
+                exit_code = 1
         else:
             print("⚠️  No Google Drive folder ID provided. File saved locally only.")
     else:
         print("❌ No CSV file to upload")
+        exit_code = 1
+
+    if failures:
+        print("\n" + "=" * 70)
+        print(f"❌ {len(failures)} FETCH FAILURE(S) - data below is MISSING or PARTIAL in this run:")
+        print("=" * 70)
+        for f in failures:
+            ts = f" timesheet {f['timesheet_id']}" if f['timesheet_id'] else ''
+            print(f"  • {f['project_id']} '{f['project_name']}' [{f['stage']}{ts}] → {f['error']}")
+        exit_code = 1
+    else:
+        print("\n✅ All projects and timesheets fetched with no failures.")
+
+    sys.exit(exit_code)
